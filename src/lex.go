@@ -14,7 +14,7 @@ type Token struct {
 }
 
 func (t *Token) String() string {
-	s := fmt.Sprintf("Token(%s, %s, index: %d, end: %d, lineNO: %d)", t.Type, t.Value, t.Index, t.End, t.Lineno)
+	s := fmt.Sprintf("Token(%s, %s, index: %d, end: %d, lineNO: %d)\n", t.Type, t.Value, t.Index, t.End, t.Lineno)
 	return s
 }
 
@@ -75,7 +75,8 @@ func (l *Lexer) Tokenize(text string) ([]*Token, error) {
 		token := &Token{}
 		longestLen := 0
 		for i, name := range l.pattern.SubexpNames() {
-			if i != 0 && name != "" {
+			if i != 0 && name != "" && len(match[i]) > 0 {
+
 				token.Type = name
 				token.Value = match[i]
 				token.Index = index
