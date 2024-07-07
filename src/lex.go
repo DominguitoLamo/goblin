@@ -48,7 +48,7 @@ func CreateLexer(rules map[string]string, ignore []string, newLineChar string) *
 	}
 }
 
-func (l *Lexer) Tokenize(text string) []*Token {
+func (l *Lexer) Tokenize(text string) ([]*Token, error) {
 	tokens := []*Token{}
 	lineno := 1
 	index := 0
@@ -67,6 +67,28 @@ func (l *Lexer) Tokenize(text string) []*Token {
 			continue
 		}
 
-		
+		match := l.pattern.FindStringSubmatch(text[index:])
+		if match == nil {
+			return nil, fmt.Errorf("invalid token at index %d, line %d", index, lineno)
+		}
+
+		token := &Token{}
+		longestLen := 0
+		for i, name := range l.pattern.SubexpNames() {
+			if i != 0 && name != "" {
+				token.Type = name
+				token.Value = match[i]
+				token.Index = index
+				token.End = index + len(match[i])
+				token.Lineno = lineno
+
+				if len(match[i]) > longestLen {
+					longestLen = len(match[i])
+				}
+			}
+		}
+		index += longestLen
+		tokens = append(tokens, token)
 	}
+	return tokens, nil
 }
