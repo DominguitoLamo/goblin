@@ -20,13 +20,15 @@ func (t *Token) String() string {
 
 type Lexer struct {
 	pattern *regexp.Regexp
+	redefine map[string]map[string]string
 	rules map[string]string
 	ignore *regexp.Regexp
-	newLineChar *regexp.Regexp
 }
 
-func CreateLexer(rules map[string]string, ignore []string, newLineChar string) *Lexer {
+func CreateLexer(rules map[string]string, ignore []string) *Lexer {
 	ignorePattern := ""
+	redefine := map[string]map[string]string{}
+
 	for _, pattern := range ignore {
 		ignorePattern += pattern + "|"
 	}
@@ -36,17 +38,43 @@ func CreateLexer(rules map[string]string, ignore []string, newLineChar string) *
 
 	pattern := ""
 	for key, value := range rules {
+		if isIn, tokenType, keywords := isRedefine(key); isIn {
+			_, ok := redefine[tokenType]
+			if !ok {
+				redefine[tokenType] = map[string]string{
+					value: keywords,
+				}
+			} else {
+				redefine[tokenType][value] = keywords
+			}
+			continue
+		}
+
 		pattern += fmt.Sprintf("(?P<%s>%s)|", key, value)
 	}
 	patternReg := regexp.MustCompile(pattern[:len(pattern)-1])
 
 	return &Lexer{
 		rules: rules,
+		redefine: redefine,
 		pattern: patternReg,
 		ignore: ignoreReg,
-		newLineChar: regexp.MustCompile(newLineChar),
 	}
 }
+
+func isRedefine(key string) (bool, string, string) {
+	reg := regexp.MustCompile(`([A-Z]+)\[([A-Z]+)\]`)
+	match := reg.FindStringSubmatch(key)
+	if match == nil {
+		return false, "", ""
+	}
+
+	if len(match) != 3 {
+		return false, "", ""
+	}
+	return true, match[1], match[2]
+}
+
 
 func (l *Lexer) Tokenize(text string) ([]*Token, error) {
 	tokens := []*Token{}
@@ -61,7 +89,8 @@ func (l *Lexer) Tokenize(text string) ([]*Token, error) {
 		}
 
 		// handle new line case
-		if l.newLineChar.MatchString(text[index:index+1]) {
+		if text[index:index+1] == "\n" {
+
 			lineno++
 			index++
 			continue
@@ -88,6 +117,15 @@ func (l *Lexer) Tokenize(text string) ([]*Token, error) {
 				}
 			}
 		}
+
+		// handle redefine case
+		if typeMap, ok := l.redefine[token.Type]; ok {
+			keyword, valOk := typeMap[token.Value]
+			if valOk {
+				token.Type = keyword
+			}
+		}
+
 		index += longestLen
 		tokens = append(tokens, token)
 	}
