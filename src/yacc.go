@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 type Parser interface {
 }
@@ -31,6 +34,7 @@ type grammar struct {
 	first        map[string]*StrSet
 	follow       map[string]*StrSet
 	precedence   map[string]string // Tokentype:acc-level
+	usedPrecedence *StrSet
 	start        string
 }
 
@@ -55,6 +59,7 @@ func createGrammar(l *Lexer, r []*SyntaxRule, p []*Precedence) *grammar {
 		first:        make(map[string]*StrSet),
 		follow:       make(map[string]*StrSet),
 		precedence:   make(map[string]string), // Tokentype:acc-level
+		usedPrecedence: createSet(),
 	}
 
 	for key := range l.rules {
@@ -100,6 +105,23 @@ func (g *grammar) setRules(rules []*SyntaxRule) {
 }
 
 func (g *grammar) addProduction(name string, rOps []string, rFunc func(Parser) error) {
+	predNote, opsArr := g.getPrecedence(name, rOps)
+	var ops []string
+	if opsArr != nil {
+		ops = opsArr
+	} else {
+		ops = rOps
+	}
+
+	ruleId := fmt.Sprintf("%s->%s", name, strings.Join(ops, " "))
+	if _, ok := g.prodMap[ruleId]; ok {
+		panic(fmt.Sprintf("duplicate production %s", ruleId))
+	}
+
+
+}
+
+func (g *grammar) getPrecedence(name string, rOps []string) (string, []string) {
 	// Determine the precedence level
 	const PREC = "%prec"
 	isPrecExist := false
@@ -119,9 +141,33 @@ func (g *grammar) addProduction(name string, rOps []string, rFunc func(Parser) e
 			panic(fmt.Sprintf("Syntax error in %s. %prec can only appear at the end of a grammar rule", name))
 		}
 
-		
+		precName := rOps[len(rOps)-1]
+		precInfo, isIn := g.precedence[precName]
+		if !isIn {
+			panic(fmt.Sprintf("Nothing known about the precedence of %s", precName))
+		}
+		g.usedPrecedence.add(precName)
+		return precInfo, rOps[:len(rOps)-2]
+	}
+
+	precName := g.rightMostTerminal(rOps)
+
+	if precName == "" {
+		return fmt.Sprintf("%s-%s", PRIGHT, 0), nil
+	} else {
+		return g.precedence[precName], nil
 	}
 }
+
+func (g *grammar) rightMostTerminal(ops []string) string {
+	for i := len(ops) - 1; i >= 0; i-- {
+		if _, ok := g.terminals[ops[i]]; ok {
+			return ops[i]
+		}
+	}
+	return ""
+}
+
 
 func expStr2Arr(s string) []string {
 	arr := []string{}
