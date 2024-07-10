@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+const ENDTOKEN = "$end"
+
 type Parser interface {
 }
 
@@ -83,6 +85,10 @@ func createGrammar(l *Lexer, r []*SyntaxRule, p []*Precedence) *grammar {
 
 	grammar.setPrecedence(p)
 	grammar.setRules(r)
+	grammar.start = r[0].Name
+
+	// check unused, undefined, unreachable, cycles
+	grammar.checkGrammar()
 
 	return grammar
 }
@@ -206,6 +212,134 @@ func (g *grammar) rightMostTerminal(ops []string) string {
 		}
 	}
 	return ""
+}
+
+func (g *grammar) checkGrammar() {
+	g.undefinedSymbols()
+	g.unusedTerminals()
+	g.unusedRules()
+	g.unreachableRules()
+	g.cyclicRules()
+}
+
+
+func (g *grammar) cyclicRules() {
+	terminates := make(map[string]bool)
+
+	// terminals
+	for t := range g.terminals {
+		terminates[t] = true
+	}
+	terminates[ENDTOKEN] = true
+
+	// nonterminals
+	for n, _ := range g.nonterminals {
+		terminates[n] = false
+	}
+
+	for {
+		changed := false
+		for n, products := range g.prodNames {
+			pTerminates := true
+			// nonterminals in terminates if any of its productions terminates
+			for _, p := range products {
+				for _, s := range p.prod {
+					// the symbol s is not terminate, so production p does not terminate
+					if isTerminate, _ := terminates[s]; !isTerminate {
+						pTerminates = false
+						break
+					}
+				}
+			}
+
+			// all productions of nonterminal n terminate, so n terminates
+			if pTerminates {
+				if !terminates[n] {
+					terminates[n] = true
+					changed = true
+				}
+				break
+			}
+		}
+
+		if !changed {
+			break
+		}
+	}
+
+	infinite := make([]string, 0)
+	for s, t := range terminates {
+		// consider unused case
+		// unused terminal
+		if _, ok := g.terminals[s]; !ok {
+			continue
+		}
+
+		// unused rules
+		if _, ok := g.prodNames[s]; !ok {
+			continue
+		}
+
+		if !t {
+			infinite = append(infinite, s)
+		}
+	}
+
+	if len(infinite) > 0 {
+		panic(fmt.Sprintf("cyclic rule(s) made by %s", strings.Join(infinite, ",")))
+	}
+}
+
+func (g *grammar) unreachableRules() {
+	reachable := createSet()
+	g.makeReachable(g.start, reachable)
+
+	for s, _ := range g.nonterminals {
+		if !reachable.contains(s) {
+			fmt.Printf("unreachable rule %s!! \n", s)
+		}
+	}
+}
+
+func (g *grammar) makeReachable(s string, reachable *StrSet) {
+	if reachable.contains(s) {
+		return
+	}
+	reachable.add(s)
+	for _, p := range g.prodNames[s] {
+		for _, item := range p.prod {
+			g.makeReachable(item, reachable)
+		}
+	}
+}
+
+func (g *grammar) unusedRules() {
+	for s, n := range g.nonterminals {
+		if n != nil && len(n) == 0 {
+			fmt.Printf("unused rule %s!! \n", s)
+		}
+	}
+
+}
+
+func (g *grammar) unusedTerminals() {
+	for s, t := range g.terminals {
+		if t != nil && len(t) == 0 {
+			fmt.Printf("unused terminal %s!! \n", s)
+		}
+	}
+}
+
+func (g *grammar) undefinedSymbols() {
+	for _, p := range g.productions {
+		for _, item := range p.prod {
+			if _, ok := g.terminals[item]; !ok {
+				if _, ok := g.nonterminals[item]; !ok {
+					fmt.Printf("undefined symbol %s in %s \n", item, p.name)
+				}
+			}
+		}
+	}
 }
 
 
