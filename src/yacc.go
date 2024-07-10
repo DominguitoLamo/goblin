@@ -317,8 +317,11 @@ func (g *grammar) makeReachable(s string, reachable *StrSet) {
 
 func (g *grammar) unusedRules() {
 	for s, n := range g.nonterminals {
+		if s == g.start {
+			continue
+		}
 		if n != nil && len(n) == 0 {
-			fmt.Printf("unused rule %s!! \n", s)
+			fmt.Printf("unused rule %s !! \n", s)
 		}
 	}
 
@@ -327,7 +330,7 @@ func (g *grammar) unusedRules() {
 func (g *grammar) unusedTerminals() {
 	for s, t := range g.terminals {
 		if t != nil && len(t) == 0 {
-			fmt.Printf("unused terminal %s!! \n", s)
+			fmt.Printf("unused terminal %s !! \n", s)
 		}
 	}
 }
