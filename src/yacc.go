@@ -2,13 +2,23 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
 type Parser interface {
 }
 
-type production struct{}
+type production struct{
+	id int
+	name string
+	prod []string
+	prodSize int
+	symSet *StrSet
+	precDirect int
+	precLevel int
+	pFunc func(Parser) error
+}
 
 type RuleOps struct {
 	Ops string
@@ -164,11 +174,11 @@ func (g *grammar) getPrecedence(name string, rOps []string) (string, []string) {
 
 	if isPrecExist {
 		if rOps[len(rOps)-1] == PREC {
-			panic(fmt.Sprintf("Syntax error in %s. Nothing follows %prec", name))
+			panic(fmt.Sprintf("Syntax error in %s. Nothing follows %%prec", name))
 		}
 
 		if rOps[len(rOps)-2] == PREC {
-			panic(fmt.Sprintf("Syntax error in %s. %prec can only appear at the end of a grammar rule", name))
+			panic(fmt.Sprintf("Syntax error in %s. %%prec can only appear at the end of a grammar rule", name))
 		}
 
 		precName := rOps[len(rOps)-1]
@@ -183,7 +193,7 @@ func (g *grammar) getPrecedence(name string, rOps []string) (string, []string) {
 	precName := g.rightMostTerminal(rOps)
 
 	if precName == "" {
-		return fmt.Sprintf("%s-%s", PRIGHT, 0), nil
+		return fmt.Sprintf("%d-%d", PRIGHT, 0), nil
 	} else {
 		return g.precedence[precName], nil
 	}
@@ -220,6 +230,39 @@ func expStr2Arr(s string) []string {
 	return arr
 }
 
-func createProduction(pnumber int, name string, ops []string, precInfo string, rFunc func( Parser) error) {
-	panic("unimplemented")
+func createProduction(pnumber int, name string, ops []string, precInfo string, pfunc func(Parser) error) *production {
+	p := &production{
+		id: pnumber,
+		name: name,
+		prod: ops,
+		prodSize: len(ops),
+		// get the unique symbols in production
+		symSet: createSet(),
+		precDirect: 0,
+		precLevel: 0,
+		pFunc: pfunc,
+	}
+
+	precArr := strings.Split(precInfo, "-")
+	if len(precArr) != 2 {
+		panic("invalid precedence info")
+	}
+
+	if num, err := strconv.Atoi(precArr[0]); err != nil {
+		panic("invalid precedence info")
+	} else {
+		p.precDirect = num
+	}
+
+	if num, err := strconv.Atoi(precArr[1]); err != nil {
+		panic("invalid precedence info")
+	} else {
+		p.precLevel = num
+	}
+
+	for _, item := range ops {
+		p.symSet.add(item)
+	}
+
+	return p
 }
