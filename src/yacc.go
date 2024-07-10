@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -61,7 +62,7 @@ type Precedence struct {
 	Level     int
 }
 
-func createGrammar(l *Lexer, r []*SyntaxRule, p []*Precedence) *grammar {
+func CreateGrammar(l *Lexer, r []*SyntaxRule, p []*Precedence) *grammar {
 	grammar := &grammar{
 		productions:  make([]*production, 0),
 		prodNames:    make(map[string][]*production),
@@ -115,6 +116,7 @@ func (g *grammar) setRules(rules []*SyntaxRule) {
 			panic("duplicate name with tokentype")
 		}
 		for _, ops := range rule.Expend {
+
 			rOps := expStr2Arr(ops.Ops)
 			g.addProduction(rule.Name, rOps, ops.RFunc)
 		}
@@ -245,7 +247,7 @@ func (g *grammar) cyclicRules() {
 			for _, p := range products {
 				for _, s := range p.prod {
 					// the symbol s is not terminate, so production p does not terminate
-					if isTerminate, _ := terminates[s]; !isTerminate {
+					if isTerminate := terminates[s]; !isTerminate {
 						pTerminates = false
 						break
 					}
@@ -342,26 +344,41 @@ func (g *grammar) undefinedSymbols() {
 	}
 }
 
+func (g *grammar) string() string {
+	result := ""
+
+	result += "Grammar:\n"
+	result += "\n"
+
+	result += "Terminals:\n"
+
+	for t := range g.terminals {
+		result += fmt.Sprintf("%s\n", t)
+	}
+	result += "\n"
+
+	result += "Nonterminals:\n"
+	for n := range g.nonterminals {
+		result += fmt.Sprintf("%s\n", n)
+	}
+	result += "\n"
+
+	result += fmt.Sprintf("start:%s \n", g.start)
+	result += "\n"
+
+	result += "Productions:\n"
+	for _, p := range g.productions {
+		result += fmt.Sprintf("%s -> %s\n", p.name, strings.Join(p.prod, " "))
+	}
+
+	return result
+}
+
 
 func expStr2Arr(s string) []string {
-	arr := []string{}
-	start := 0
-	end := 0
-
-	for end < len(s) {
-		if s[end] != ' ' && s[end] != '\t' {
-			end++
-			continue
-		} else {
-			if s[start] != ' ' {
-				arr = append(arr, s[start:end])
-			}
-			
-			start = end + 1
-			end = start
-		}
-	}
-	return arr
+  // write regexp to get word from string and convert them to array
+  reg := regexp.MustCompile(`\w+`)
+  return reg.FindAllString(s, -1)
 }
 
 func createProduction(pnumber int, name string, ops []string, precInfo string, pfunc func(Parser) error) *production {
@@ -372,26 +389,28 @@ func createProduction(pnumber int, name string, ops []string, precInfo string, p
 		prodSize: len(ops),
 		// get the unique symbols in production
 		symSet: createSet(),
-		precDirect: 0,
+		precDirect: PRIGHT,
 		precLevel: 0,
 		pFunc: pfunc,
 	}
 
-	precArr := strings.Split(precInfo, "-")
-	if len(precArr) != 2 {
-		panic("invalid precedence info")
-	}
-
-	if num, err := strconv.Atoi(precArr[0]); err != nil {
-		panic("invalid precedence info")
-	} else {
-		p.precDirect = num
-	}
-
-	if num, err := strconv.Atoi(precArr[1]); err != nil {
-		panic("invalid precedence info")
-	} else {
-		p.precLevel = num
+	if precInfo != "" {
+		precArr := strings.Split(precInfo, "-")
+		if len(precArr) != 2 {
+			panic("invalid precedence info")
+		}
+	
+		if num, err := strconv.Atoi(precArr[0]); err != nil {
+			panic("invalid precedence info")
+		} else {
+			p.precDirect = num
+		}
+	
+		if num, err := strconv.Atoi(precArr[1]); err != nil {
+			panic("invalid precedence info")
+		} else {
+			p.precLevel = num
+		}
 	}
 
 	for _, item := range ops {
