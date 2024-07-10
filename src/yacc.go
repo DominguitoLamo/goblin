@@ -8,7 +8,7 @@ import (
 type Parser interface {
 }
 
-type Production interface{}
+type production struct{}
 
 type RuleOps struct {
 	Ops string
@@ -24,13 +24,13 @@ type grammar struct {
 	// A list of all of the productions.  The first
 	// entry is always reserved for the purpose of
 	// building an augmented grammar
-	productions []any
+	productions []*production
 	// A dictionary mapping the names of nonterminals to a list of all
 	// productions of that nonterminal.
-	prodNames    map[string]any
-	prodMap      map[string]any
-	terminals    map[string][]any
-	nonterminals map[string][]any
+	prodNames    map[string][]*production
+	prodMap      map[string]int
+	terminals    map[string][]int
+	nonterminals map[string][]int
 	first        map[string]*StrSet
 	follow       map[string]*StrSet
 	precedence   map[string]string // Tokentype:acc-level
@@ -51,23 +51,24 @@ type Precedence struct {
 
 func createGrammar(l *Lexer, r []*SyntaxRule, p []*Precedence) *grammar {
 	grammar := &grammar{
-		productions:  make([]any, 1),
-		prodNames:    make(map[string]any),
-		prodMap:      make(map[string]any),
-		terminals:    make(map[string][]any),
-		nonterminals: make(map[string][]any),
+		productions:  make([]*production, 0),
+		prodNames:    make(map[string][]*production),
+		prodMap:      make(map[string]int),
+		terminals:    make(map[string][]int),
+		nonterminals: make(map[string][]int),
 		first:        make(map[string]*StrSet),
 		follow:       make(map[string]*StrSet),
 		precedence:   make(map[string]string), // Tokentype:acc-level
 		usedPrecedence: createSet(),
 	}
 
+	// identify keywords in lexer
 	for key := range l.rules {
 		if isIn, _, keywords := isRedefine(key); isIn {
-			grammar.terminals[keywords] = []any{}
+			grammar.terminals[keywords] = []int{}
 			continue
 		}
-		grammar.terminals[key] = []any{}
+		grammar.terminals[key] = []int{}
 	}
 
 	grammar.setPrecedence(p)
@@ -105,7 +106,7 @@ func (g *grammar) setRules(rules []*SyntaxRule) {
 }
 
 func (g *grammar) addProduction(name string, rOps []string, rFunc func(Parser) error) {
-	predNote, opsArr := g.getPrecedence(name, rOps)
+	precInfo, opsArr := g.getPrecedence(name, rOps)
 	var ops []string
 	if opsArr != nil {
 		ops = opsArr
@@ -113,12 +114,41 @@ func (g *grammar) addProduction(name string, rOps []string, rFunc func(Parser) e
 		ops = rOps
 	}
 
+	// see if the rule is already defined
 	ruleId := fmt.Sprintf("%s->%s", name, strings.Join(ops, " "))
 	if _, ok := g.prodMap[ruleId]; ok {
 		panic(fmt.Sprintf("duplicate production %s", ruleId))
 	}
 
+	// create a new production instance
+	pnumber := len(g.productions)
+	if _,ok := g.nonterminals[name]; !ok {
+		g.nonterminals[name] = []int{}
+	}
 
+	// add the production number to Terminals and NonTerminals
+	for _, item := range ops {
+		if _, ok := g.terminals[item]; ok {
+			g.terminals[item] = append(g.terminals[item], pnumber)
+		} else {
+			if _,ok := g.nonterminals[item]; !ok {
+				g.nonterminals[item] = []int{}
+			}
+			g.nonterminals[item] = append(g.nonterminals[item], pnumber)
+		}
+	}
+
+	// create a production and add it to the list of productions
+	p := createProduction(pnumber, name, ops, precInfo, rFunc)
+	g.productions = append(g.productions, p)
+	g.prodMap[ruleId] = pnumber
+
+
+	// add the production to the list of productions for this nonterminal
+	if _, ok := g.prodNames[name]; !ok {
+		g.prodNames[name] = []*production{}
+	}
+	g.prodNames[name] = append(g.prodNames[name], p)
 }
 
 func (g *grammar) getPrecedence(name string, rOps []string) (string, []string) {
@@ -188,4 +218,8 @@ func expStr2Arr(s string) []string {
 		}
 	}
 	return arr
+}
+
+func createProduction(pnumber int, name string, ops []string, precInfo string, rFunc func( Parser) error) {
+	panic("unimplemented")
 }
