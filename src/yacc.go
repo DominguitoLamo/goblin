@@ -9,7 +9,9 @@ import (
 
 const ENDTOKEN = "$end"
 
-type Parser interface {
+type Parser struct {
+	lexer *Lexer
+	grammar *grammar
 }
 
 type production struct{
@@ -21,6 +23,8 @@ type production struct{
 	precDirect int
 	precLevel int
 	pFunc func(Parser) error
+	lrItems []*LRItem
+	lrNext *LRItem
 }
 
 type RuleOps struct {
@@ -60,6 +64,24 @@ type Precedence struct {
 	Direct    int
 	TokenType []string
 	Level     int
+}
+
+type LRItem struct {
+
+}
+
+func CreateSyntaxParser(l *Lexer, rules []*SyntaxRule, prec []*Precedence) *Parser {
+	parser := &Parser{
+		lexer: l,
+		grammar: CreateGrammar(l, rules, prec),
+	}
+	parser.buildLRTables()
+	return parser
+}
+
+// Build the LR Parsing tables from the grammar
+func (self *Parser) buildLRTables() {
+
 }
 
 func CreateGrammar(l *Lexer, r []*SyntaxRule, p []*Precedence) *grammar {
@@ -110,6 +132,10 @@ func (g *grammar) setPrecedence(p []*Precedence) {
 }
 
 func (g *grammar) setRules(rules []*SyntaxRule) {
+	if  len(rules) == 0 {
+		panic("no rules!")
+	}
+
 	for _, rule := range rules {
 		// valid whether it is terminal type
 		if _, ok := g.terminals[rule.Name]; ok {
@@ -395,6 +421,8 @@ func createProduction(pnumber int, name string, ops []string, precInfo string, p
 		precDirect: PRIGHT,
 		precLevel: 0,
 		pFunc: pfunc,
+		lrItems: make([]*LRItem, 0),
+		lrNext: nil,
 	}
 
 	if precInfo != "" {
