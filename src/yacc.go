@@ -67,7 +67,41 @@ type Precedence struct {
 }
 
 type LRItem struct {
+	name string
+	prod *[]string
+	number int
+	lrIndex int
+	lookaheads map[string]int
+	len int
+	symSet *StrSet
+}
 
+func createLRItem(p *production, dotIndex int) *LRItem {
+	item := &LRItem{
+		name: p.name,
+		number: p.id,
+		lrIndex: dotIndex,
+		lookaheads: make(map[string]int),
+		symSet: p.symSet,
+		len: 0,
+	}
+
+	item.prod = insertStr2Arr(&p.prod, ".", dotIndex)
+	item.len = len(*item.prod)
+
+	return item
+}
+
+func (self *LRItem) String() string {
+	s := ""
+	if self.len != 0 {
+		s = fmt.Sprintf("%s -> %s", self.name, strings.Join(*self.prod, " "))
+	} else {
+		s = fmt.Sprintf("%s -> <empty>", self.name)
+
+	}
+
+	return s
 }
 
 func CreateSyntaxParser(l *Lexer, rules []*SyntaxRule, prec []*Precedence) *Parser {
@@ -113,7 +147,16 @@ func CreateGrammar(l *Lexer, r []*SyntaxRule, p []*Precedence) *grammar {
 	// check unused, undefined, unreachable, cycles
 	grammar.checkGrammar()
 
+	// prepare for the establishment of LRTable
+	grammar.buildLRItems()
+	grammar.buildFirst()
+	grammar.buildFollow()
+
 	return grammar
+}
+
+func (g *grammar) buildLRItems() {
+
 }
 
 func (g *grammar) setPrecedence(p []*Precedence) {
@@ -446,4 +489,12 @@ func createProduction(pnumber int, name string, ops []string, precInfo string, p
 	}
 
 	return p
+}
+
+func insertStr2Arr(arr *[]string, s string, index int) *[]string {
+	result := make([]string, len(*arr)+1)
+	copy(result, (*arr)[:index])
+	result[index] = s
+	copy(result[index+1:], (*arr)[index:])
+	return &result
 }
