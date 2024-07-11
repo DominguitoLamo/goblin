@@ -180,7 +180,64 @@ func CreateGrammar(l *Lexer, r []*SyntaxRule, p []*Precedence) *grammar {
 	return grammar
 }
 
+// Computes all of the follow sets for every non-terminal symbol.  The
+// follow set is the set of all symbols that might follow a given
+// non-terminal.  See the Dragon book, 2nd Ed. p. 189.
+func (g *grammar) buildFollow() {
+	if len(g.follow) > 0 {
+		return
+	}
 
+	if len(g.first) == 0 {
+		g.buildFirst()
+	}
+
+	// Add '$end' to the follow list of the start symbol
+	for n := range g.nonterminals {
+		g.follow[n] = createSet()
+	}
+
+	g.follow[g.start].add(ENDTOKEN)
+
+	for {
+		didAdd := false
+		for _, production := range g.productions[1:] {
+			for index, symbol := range production.prod {
+				if _, ok := g.nonterminals[symbol]; !ok {
+					continue
+				}
+				prodSlice := production.prod[index+1:]
+				first := g.getFirstFromProd(&prodSlice)
+				hasEmpty := false
+
+				first.forEach(func(f string) {
+					if f == EMPTYTOKEN {
+						hasEmpty = true
+					} else {
+						if !g.follow[symbol].contains(f) {
+							g.follow[symbol].add(f)
+							didAdd = true
+						}
+					}
+				})
+
+				if hasEmpty || index == len(production.prod)-1 {
+					follow := g.follow[production.name]
+					follow.forEach(func(f string) {
+						if !g.follow[symbol].contains(f) {
+							g.follow[symbol].add(f)
+							didAdd = true
+						}
+					})
+				}
+			}
+		}
+
+		if !didAdd {
+			break
+		}
+	}
+}
 
 // Compute the value of FIRST1(X) for all symbols
 func (g *grammar) buildFirst() {
@@ -207,7 +264,7 @@ func (g *grammar) buildFirst() {
 		for n := range g.nonterminals {
 			for _, p := range g.prodNames[n] {
 				if !changed {
-					changed = g.getFirstFromProd(n, &p.prod)
+					changed = g.setFirstFromProd(n, &p.prod)
 				}
 			}
 		}
@@ -217,8 +274,34 @@ func (g *grammar) buildFirst() {
 	}
 }
 
+func (g *grammar) getFirstFromProd(p *[]string) *StrSet {
+	result := createSet()
+
+	for _, x := range *p {
+		firsts := g.first[x]
+		hasEmpty := false
+		firsts.forEach(func(s string) {
+			if !result.contains(s) {
+				result.add(s)
+			}
+
+			// empty case
+			if s == EMPTYTOKEN {
+				result.add(EMPTYTOKEN)
+				hasEmpty = true
+			}
+		})
+
+		if !hasEmpty {
+			break
+		}
+	}
+
+	return result
+}
+
 // Compute the value of FIRST1(p) where p is a tuple of symbols.
-func (g *grammar) getFirstFromProd(name string, p *[]string) bool {
+func (g *grammar) setFirstFromProd(name string, p *[]string) bool {
 	result := createSet()
 	changed := false
 
