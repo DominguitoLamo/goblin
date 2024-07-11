@@ -261,7 +261,7 @@ func (g *grammar) cyclicRules() {
 	terminates[ENDTOKEN] = true
 
 	// nonterminals
-	for n, _ := range g.nonterminals {
+	for n := range g.nonterminals {
 		terminates[n] = false
 	}
 
@@ -298,13 +298,10 @@ func (g *grammar) cyclicRules() {
 	infinite := make([]string, 0)
 	for s, t := range terminates {
 		// consider unused case
-		// unused terminal
-		if _, ok := g.terminals[s]; !ok {
-			continue
-		}
+		_, isTerminalIn := g.terminals[s]
+		_, isNonTerminalIn := g.prodNames[s]
 
-		// unused rules
-		if _, ok := g.prodNames[s]; !ok {
+		if !isTerminalIn && !isNonTerminalIn {
 			continue
 		}
 

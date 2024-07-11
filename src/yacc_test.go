@@ -40,3 +40,52 @@ func TestCreateGrammar(t *testing.T) {
 	fmt.Println(result)
 }
 
+func TestCheckGrammar(t *testing.T) {
+	symbols := map[string]string {
+		"NUMBER": "[0-9]+",
+		"PLUS": "\\+",
+		"MINUS": "-",
+	}
+    ignores := []string{
+        "\t"," ",
+    }
+
+	l := CreateLexer(symbols, ignores)
+
+	rules := []*SyntaxRule {
+		{
+			Name: "s",
+			Expend: []*RuleOps {
+				 {
+					Ops: "e PLUS e",
+				},
+			},
+		},
+		{
+			Name: "e",
+			Expend: []*RuleOps {
+				 {
+					Ops: "r",
+				},
+			},
+		},
+		{
+			Name: "r",
+			Expend: []*RuleOps {
+				 {
+					Ops: "s",
+				},
+			},
+		},
+		{
+			Name: "t",
+			Expend: []*RuleOps {
+				 {
+					Ops: "NUMBER",
+				},
+			},
+		},
+	}
+
+	CreateGrammar(l, rules, []*Precedence{})
+}
