@@ -7,6 +7,7 @@ import (
 	"strings"
 )
 
+const EMPTYTOKEN = "<empty>"
 const ENDTOKEN = "$end"
 
 type Parser struct {
@@ -66,17 +67,23 @@ type Precedence struct {
 	Level     int
 }
 
+// This class represents a specific stage of parsing a production rule.  For
+// example:
+//
+//       expr : expr . PLUS term
 type LRItem struct {
 	name string
 	prod *[]string
 	number int
 	lrIndex int
+	lrAfter []*production
+	lrBefore string
 	lookaheads map[string]int
 	len int
 	symSet *StrSet
 }
 
-func createLRItem(p *production, dotIndex int) *LRItem {
+func createLRItem(g *grammar,p *production, dotIndex int) *LRItem {
 	item := &LRItem{
 		name: p.name,
 		number: p.id,
@@ -89,6 +96,24 @@ func createLRItem(p *production, dotIndex int) *LRItem {
 	item.prod = insertStr2Arr(&p.prod, ".", dotIndex)
 	item.len = len(*item.prod)
 
+	// compute the list of productions after following
+	item.lrAfter = make([]*production, 0)
+	if dotIndex < (len(p.prod) - 1) {
+		nextProductions := g.prodNames[(*item.prod)[dotIndex + 1]]
+		for _, p := range nextProductions {
+			item.lrAfter = append(item.lrAfter, p)
+		}
+	}
+
+	item.lrBefore = ""
+
+	if dotIndex > 0 {
+		item.lrBefore = (*item.prod)[dotIndex - 1]
+	} else if dotIndex == 0 {
+		// get the last one in prod
+		item.lrBefore = (*item.prod)[len(*item.prod) - 1]
+	}
+
 	return item
 }
 
@@ -97,7 +122,7 @@ func (self *LRItem) String() string {
 	if self.len != 0 {
 		s = fmt.Sprintf("%s -> %s", self.name, strings.Join(*self.prod, " "))
 	} else {
-		s = fmt.Sprintf("%s -> <empty>", self.name)
+		s = fmt.Sprintf("%s -> %s", self.name, EMPTYTOKEN)
 
 	}
 
@@ -155,8 +180,110 @@ func CreateGrammar(l *Lexer, r []*SyntaxRule, p []*Precedence) *grammar {
 	return grammar
 }
 
-func (g *grammar) buildLRItems() {
 
+
+// Compute the value of FIRST1(X) for all symbols
+func (g *grammar) buildFirst() {
+	if len(g.first) > 0 {
+		return
+	}
+
+	// terminals
+	for t := range g.terminals {
+		g.first[t] = createSet()
+		g.first[t].add(t)
+	}
+
+	g.first[ENDTOKEN] = createSet()
+	g.first[ENDTOKEN].add(ENDTOKEN)
+
+	// nonterminals
+	for n := range g.nonterminals {
+		g.first[n] = createSet()
+	}
+
+	changed := false
+	for {
+		for n := range g.nonterminals {
+			for _, p := range g.prodNames[n] {
+				if !changed {
+					changed = g.getFirstFromProd(n, &p.prod)
+				}
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+}
+
+// Compute the value of FIRST1(p) where p is a tuple of symbols.
+func (g *grammar) getFirstFromProd(name string, p *[]string) bool {
+	result := createSet()
+	changed := false
+
+	for _, x := range *p {
+		firsts := g.first[x]
+		hasEmpty := false
+		firsts.forEach(func(s string) {
+			if !result.contains(s) {
+				result.add(s)
+				changed = true
+			}
+
+			// empty case
+			if s == EMPTYTOKEN {
+				result.add(EMPTYTOKEN)
+				hasEmpty = true
+			}
+		})
+
+		if !hasEmpty {
+			break
+		}
+	}
+
+	if result.size() > 0 {
+		g.first[name].addSet(result)
+	}
+
+	return changed
+}
+
+// build_lritems()
+//
+// This function walks the list of productions and builds a complete set of the
+// LR items.  The LR items are stored in two ways:  First, they are uniquely
+// numbered and placed in the list _lritems.  Second, a linked list of LR items
+// is built for each production.  For example:
+//
+//   E -> E PLUS E
+//
+// Creates the list
+//
+//  [E -> . E PLUS E, E -> E . PLUS E, E -> E PLUS . E, E -> E PLUS E . ]
+func (g *grammar) buildLRItems() {
+	var last *production
+	for _, p := range g.productions {
+		last = p
+		i := 0
+		lrItems := make([]*LRItem, 0)
+		for {
+			var item *LRItem
+			if i > len(p.prod) {
+				item = nil
+			} else {
+				item = createLRItem(g, p, i)
+			}
+			last.lrNext = item
+			if item == nil {
+				break
+			}
+			lrItems = append(lrItems, item)
+			i++
+		}
+		p.lrItems = lrItems
+	}
 }
 
 func (g *grammar) setPrecedence(p []*Precedence) {

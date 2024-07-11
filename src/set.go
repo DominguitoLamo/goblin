@@ -20,6 +20,18 @@ func (s *StrSet) addArr(arr []string) {
 	}
 }
 
+func (s *StrSet) addSet(other *StrSet) {
+	for str := range other.set {
+		s.set[str] = true
+	}
+}
+
+func (s *StrSet) forEach(f func(str string)) {
+	for str := range s.set {
+		f(str)
+	}
+}
+
 func (s *StrSet) contains(str string) bool {
 	_, ok := s.set[str]
 	return ok
