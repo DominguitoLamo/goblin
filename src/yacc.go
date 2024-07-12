@@ -35,7 +35,7 @@ type RuleOps struct {
 
 type SyntaxRule struct {
 	Name   string
-	Expend []*RuleOps
+	Expand []*RuleOps
 }
 
 type grammar struct {
@@ -394,7 +394,7 @@ func (g *grammar) setRules(rules []*SyntaxRule) {
 		if _, ok := g.terminals[rule.Name]; ok {
 			panic("duplicate name with tokentype")
 		}
-		for _, ops := range rule.Expend {
+		for _, ops := range rule.Expand {
 
 			rOps := expStr2Arr(ops.Ops)
 			g.addProduction(rule.Name, rOps, ops.RFunc)
@@ -464,7 +464,7 @@ func (g *grammar) getPrecedence(name string, rOps []string) (string, []string) {
 			panic(fmt.Sprintf("Syntax error in %s. Nothing follows %%prec", name))
 		}
 
-		if rOps[len(rOps)-2] == PREC {
+		if rOps[len(rOps)-2] != PREC {
 			panic(fmt.Sprintf("Syntax error in %s. %%prec can only appear at the end of a grammar rule", name))
 		}
 
@@ -479,10 +479,10 @@ func (g *grammar) getPrecedence(name string, rOps []string) (string, []string) {
 
 	precName := g.rightMostTerminal(rOps)
 
-	if precName == "" {
-		return fmt.Sprintf("%d-%d", PRIGHT, 0), nil
+	if predInfo, ok := g.precedence[precName]; ok {
+		return predInfo, nil
 	} else {
-		return g.precedence[precName], nil
+		return fmt.Sprintf("%d-%d", PRIGHT, 0), nil
 	}
 }
 
@@ -520,10 +520,14 @@ func (g *grammar) cyclicRules() {
 
 	for {
 		changed := false
+
 		for n, products := range g.prodNames {
-			pTerminates := true
 			// nonterminals in terminates if any of its productions terminates
 			for _, p := range products {
+				if terminates[n] {
+					break
+				}
+				pTerminates := true
 				for _, s := range p.prod {
 					// the symbol s is not terminate, so production p does not terminate
 					if isTerminate := terminates[s]; !isTerminate {
@@ -531,15 +535,14 @@ func (g *grammar) cyclicRules() {
 						break
 					}
 				}
-			}
 
-			// all productions of nonterminal n terminate, so n terminates
-			if pTerminates {
-				if !terminates[n] {
-					terminates[n] = true
-					changed = true
+				// all productions of nonterminal n terminate, so n terminates
+				if pTerminates {
+					if !terminates[n] {
+						terminates[n] = true
+						changed = true
+					}
 				}
-				break
 			}
 		}
 
@@ -572,7 +575,7 @@ func (g *grammar) unreachableRules() {
 	reachable := createSet()
 	g.makeReachable(g.start, reachable)
 
-	for s, _ := range g.nonterminals {
+	for s := range g.nonterminals {
 		if !reachable.contains(s) {
 			fmt.Printf("unreachable rule %s!! \n", s)
 		}
@@ -649,6 +652,12 @@ func (g *grammar) string() string {
 	for _, p := range g.productions {
 		result += fmt.Sprintf("%s -> %s\n", p.name, strings.Join(p.prod, " "))
 	}
+	result += "\n"
+
+	result += "First:\n"
+	for t, p := range g.first {
+		result += fmt.Sprintf("%s: %s\n", t, p.string())
+	}
 
 	return result
 }
@@ -656,7 +665,8 @@ func (g *grammar) string() string {
 
 func expStr2Arr(s string) []string {
   // write regexp to get word from string and convert them to array
-  reg := regexp.MustCompile(`\w+`)
+  // precedence case must be considered
+  reg := regexp.MustCompile(`\w+|%prec`)
   return reg.FindAllString(s, -1)
 }
 

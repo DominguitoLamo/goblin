@@ -19,7 +19,7 @@ func TestCreateGrammar(t *testing.T) {
 	rules := []*SyntaxRule {
 		{
 			Name: "expr",
-			Expend: []*RuleOps {
+			Expand: []*RuleOps {
 				 {
 					Ops: "terms PLUS terms",
 				},
@@ -27,7 +27,7 @@ func TestCreateGrammar(t *testing.T) {
 		},
 		{
 			Name: "terms",
-			Expend: []*RuleOps {
+			Expand: []*RuleOps {
 				 {
 					Ops: "NUMBER",
 				},
@@ -55,7 +55,7 @@ func TestCheckGrammar(t *testing.T) {
 	rules := []*SyntaxRule {
 		{
 			Name: "s",
-			Expend: []*RuleOps {
+			Expand: []*RuleOps {
 				 {
 					Ops: "e PLUS e",
 				},
@@ -63,7 +63,7 @@ func TestCheckGrammar(t *testing.T) {
 		},
 		{
 			Name: "e",
-			Expend: []*RuleOps {
+			Expand: []*RuleOps {
 				 {
 					Ops: "r",
 				},
@@ -71,7 +71,7 @@ func TestCheckGrammar(t *testing.T) {
 		},
 		{
 			Name: "r",
-			Expend: []*RuleOps {
+			Expand: []*RuleOps {
 				 {
 					Ops: "s",
 				},
@@ -79,7 +79,7 @@ func TestCheckGrammar(t *testing.T) {
 		},
 		{
 			Name: "t",
-			Expend: []*RuleOps {
+			Expand: []*RuleOps {
 				 {
 					Ops: "NUMBER",
 				},
@@ -89,3 +89,105 @@ func TestCheckGrammar(t *testing.T) {
 
 	CreateGrammar(l, rules, []*Precedence{})
 }
+
+func TestFirstAndFollow(t *testing.T) {
+	g := createCalcGrammar()
+	result := g.string()
+	fmt.Println(result)
+}
+
+func createCalcGrammar() *grammar {
+    symbols := map[string]string {
+        "NAME": "[a-zA-Z_][a-zA-Z0-9_]*",
+        "NUMBER": "[0-9]+",
+
+        "PLUS": "\\+",
+        "MINUS": "\\-",
+        "MULTIPLY": "\\*",
+        "DIVIDE": "/",
+        "ASSIGN": "=",
+
+        "LPAREN": "\\(",
+        "RPAREN": "\\)",
+    }
+
+    ignores := []string{
+        "\t"," ",
+    }
+
+	l := CreateLexer(symbols, ignores)
+
+	precedences := []*Precedence {
+		{
+			Direct: PLEFT,
+			TokenType: []string {
+				"PLUS",
+				"MINUS",
+			},
+			Level: 1,
+		},
+		{
+			Direct: PLEFT,
+			TokenType: []string {
+				"MULTIPLY",
+				"DIVIDE",
+			},
+			Level: 2,
+		},
+		{
+			Direct: PRIGHT,
+			TokenType: []string {
+				"UMINUS",
+			},
+			Level: 3,
+		},
+	}
+
+	rules := []*SyntaxRule {
+		{
+			Name: "statement",
+			Expand: []*RuleOps {
+				{
+					Ops: "NAME ASSIGN expr",
+				},
+				{
+					Ops: "expr",
+				},
+			},
+		},
+		{
+			Name: "expr",
+			Expand: []*RuleOps {
+				{
+					Ops: "expr PLUS expr",
+				},
+				{
+					Ops: "expr MINUS expr",
+				},
+				{
+					Ops: "expr MULTIPLY expr",
+				},
+				{
+					Ops: "expr DIVIDE expr",
+				},
+				{
+					Ops: "MINUS expr %prec UMINUS",
+				},
+				{
+					Ops: "LPAREN expr RPAREN",
+				},
+				{
+					Ops: "NUMBER",
+				},
+				{
+					Ops: "NAME",
+				},
+			},
+		},
+	}
+	
+
+	g := CreateGrammar(l, rules, precedences)
+
+	return g
+} 
