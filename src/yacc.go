@@ -259,13 +259,11 @@ func (g *grammar) buildFirst() {
 		g.first[n] = createSet()
 	}
 
-	changed := false
 	for {
+		changed := false
 		for n := range g.nonterminals {
 			for _, p := range g.prodNames[n] {
-				if !changed {
-					changed = g.setFirstFromProd(n, &p.prod)
-				}
+				changed = g.setFirstFromProd(n, &p.prod)
 			}
 		}
 		if !changed {
@@ -302,21 +300,21 @@ func (g *grammar) getFirstFromProd(p *[]string) *StrSet {
 
 // Compute the value of FIRST1(p) where p is a tuple of symbols.
 func (g *grammar) setFirstFromProd(name string, p *[]string) bool {
-	result := createSet()
+	nSet := g.first[name]
 	changed := false
 
 	for _, x := range *p {
 		firsts := g.first[x]
 		hasEmpty := false
 		firsts.forEach(func(s string) {
-			if !result.contains(s) {
-				result.add(s)
+			if !nSet.contains(s) {
+				nSet.add(s)
 				changed = true
 			}
 
 			// empty case
 			if s == EMPTYTOKEN {
-				result.add(EMPTYTOKEN)
+				nSet.add(EMPTYTOKEN)
 				hasEmpty = true
 			}
 		})
@@ -324,10 +322,6 @@ func (g *grammar) setFirstFromProd(name string, p *[]string) bool {
 		if !hasEmpty {
 			break
 		}
-	}
-
-	if result.size() > 0 {
-		g.first[name].addSet(result)
 	}
 
 	return changed
