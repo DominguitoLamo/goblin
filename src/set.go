@@ -58,10 +58,10 @@ func (s *StrSet) equal(other *StrSet) bool {
 }
 
 func (s *StrSet) string() string {
-	str := "{"
-	for str := range s.set {
-		str += str + ", "
+	result := "{"
+	for key := range s.set {
+		result += key + ", "
 	}
-	str += "}"
-	return str
+	result += "}"
+	return result
 }

@@ -652,6 +652,13 @@ func (g *grammar) string() string {
 	for t, p := range g.first {
 		result += fmt.Sprintf("%s: %s\n", t, p.string())
 	}
+	result += "\n"
+	
+	result += "Follow:\n"
+	for t, p := range g.follow {
+		result += fmt.Sprintf("%s: %s\n", t, p.string())
+	}
+	result += "\n"
 
 	return result
 }
