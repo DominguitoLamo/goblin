@@ -25,7 +25,13 @@ type lrTable struct {
 	lrGoto map[int]map[string]int
 	lrProductions []*production
 	// Cache of computed gotos
-	lrGotoCache map[int]map[string]int
+	lrGotoCache map[string][]*LRItem
+	symbolGotoCache map[string]*symbolCache
+}
+
+type symbolCache struct {
+	transfer map[int]int
+	end []*LRItem
 }
 
 type production struct{
@@ -104,7 +110,8 @@ func CreateLRTable(g *grammar) *lrTable {
 		lrAction: make(map[int]map[string]string),
 		lrGoto: make(map[int]map[string]int),
 		lrProductions: g.productions,
-		lrGotoCache: make(map[int]map[string]int),
+		lrGotoCache: make(map[string][]*LRItem),
+		symbolGotoCache: make(map[string]*symbolCache),
 	}
 
 	// Step 1: Construct C = { I0, I1, ... IN}, collection of LR(0) items
@@ -127,8 +134,37 @@ func (self *lrTable) lr0Items() [][]*LRItem {
 		i++
 	}
 
+	// Loop over the items in C and each grammar symbols
+	i = 0
+	// len has to be invoked each iteration since the length of the closure is increasing
+	for i < len(closures) {
+		cItem := closures[i]
+		i++
+
+		allSymbols := createSet()
+		for _, lrItem := range cItem {
+			allSymbols.addSet(lrItem.symSet)
+		}
+
+		allSymbols.forEach(func(symbol string){
+			cGoto := self.lr0Goto(cItem, symbol)
+			if len(cGoto) == 0 || self.closureMap[hashLRItems(cGoto)] != 0 {
+				// continue
+			} else {
+				self.closureMap[hashLRItems(cGoto)] = len(closures)
+				closures = append(closures, cGoto)
+			}
+		})
+	}
 
 	return closures
+}
+
+func hashLRItem(lr *LRItem) int {
+	result := lr.String()
+	hash := md5.Sum([]byte(result))
+
+	return int(binary.LittleEndian.Uint32(hash[:]))
 }
 
 // compute hash with the concat of 
@@ -160,6 +196,59 @@ func (self *lrTable) lr0Closure(items *[]*LRItem) []*LRItem {
 	}
 
 	return result
+}
+
+// Compute the LR(0) goto function goto(lrs,symbol) where I is a set
+// of LR(0) items and X is a grammar symbol.   This function is written
+// in a way that guarantees uniqueness of the generated goto sets
+func (self *lrTable) lr0Goto(lrs []*LRItem, symbol string) []*LRItem {
+	// First we look for a previously cached entry
+	lrCacheKey := fmt.Sprintf("%d-%s", hashLRItems(lrs), symbol)
+	if lGoto, ok := self.lrGotoCache[lrCacheKey]; ok { 
+		return lGoto
+	}
+
+	// Now we generate the goto set in a way that guarantees uniqueness
+	// of the result
+	s := self.symbolGotoCache[lrCacheKey]
+	if s == nil {
+		s = &symbolCache{
+			transfer: make(map[int]int),
+			end: make([]*LRItem, 0),
+		}
+		self.symbolGotoCache[lrCacheKey] = s
+	}
+
+	sGoto := make([]*LRItem, 0)
+	var currentId int
+	for _, lrItem := range lrs {
+		next := lrItem.lrNext
+		// the next in front of the dot is the symbol
+		if next != nil && next.lrBefore == symbol {
+			nextHash := hashLRItem(next)
+			_, isExist := s.transfer[nextHash]
+			if !isExist {
+				if currentId == 0 {
+					currentId = nextHash
+					s.transfer[currentId] = currentId
+				} else {
+					s.transfer[currentId] = nextHash
+					currentId = nextHash
+				}
+				sGoto = append(sGoto, next)
+			}
+		}
+	}
+
+	if len(s.end) == 0 {
+		if len(sGoto) > 0 {
+			s.end = self.lr0Closure(&sGoto)
+		} else {
+			s.end = make([]*LRItem, 0)
+		}
+	}
+	self.lrGotoCache[lrCacheKey] = s.end
+	return self.lrGotoCache[lrCacheKey]
 }
 
 func createLRItem(g *grammar,p *production, dotIndex int) *LRItem {
