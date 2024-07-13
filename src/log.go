@@ -12,24 +12,24 @@ const (
 	ERROR = 4
 )
 
-const LOGLEVEL = 2
+const _LOGLEVEL = 2
 
 func DebugLog(format string, s ...interface{}) {
-	if (LOGLEVEL > DEBUG) {
+	if (_LOGLEVEL > DEBUG) {
 		return
 	}
 	log.Printf("DEBUG: %s\n", fmt.Sprintf(format, s...))
 }
 
 func InfoLog(format string, s ...interface{}) {
-	if (LOGLEVEL > INFO) {
+	if (_LOGLEVEL > INFO) {
 		return
 	}
 	log.Printf("INFO: %s\n", fmt.Sprintf(format, s...))
 }
 
 func ErrorLog(format string, s ...interface{}) {
-	if (LOGLEVEL > ERROR) {
+	if (_LOGLEVEL > ERROR) {
 		return
 	}
 	log.Printf("ERROR: %s\n", fmt.Sprintf(format, s...))

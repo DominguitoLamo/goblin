@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/md5"
+	"encoding/binary"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -13,6 +15,17 @@ const ENDTOKEN = "$end"
 type Parser struct {
 	lexer *Lexer
 	grammar *grammar
+}
+
+// This struct implements the LR table generation algorithm.
+type lrTable struct {
+	grammar *grammar
+	closureMap map[int]int // map hash of lr closure to index of lr closure
+	lrAction map[int]map[string]string
+	lrGoto map[int]map[string]int
+	lrProductions []*production
+	// Cache of computed gotos
+	lrGotoCache map[int]map[string]int
 }
 
 type production struct{
@@ -76,11 +89,77 @@ type LRItem struct {
 	prod *[]string
 	number int
 	lrIndex int
+	lrNext *LRItem
 	lrAfter []*production
 	lrBefore string
 	lookaheads map[string]int
 	len int
 	symSet *StrSet
+}
+
+func CreateLRTable(g *grammar) *lrTable {
+	lrTable := &lrTable {
+		grammar: g,
+		closureMap: make(map[int]int),
+		lrAction: make(map[int]map[string]string),
+		lrGoto: make(map[int]map[string]int),
+		lrProductions: g.productions,
+		lrGotoCache: make(map[int]map[string]int),
+	}
+
+	// Step 1: Construct C = { I0, I1, ... IN}, collection of LR(0) items
+	// This determines the number of states
+	// c := lrTable.lr0Items()
+	// lrTable.addLalrLookheads(c)
+
+	return lrTable
+}
+
+// get all the states of LR(0) closures
+func (self *lrTable) lr0Items() [][]*LRItem {
+	closures := make([][]*LRItem, 0)
+	closures = append(closures, self.lr0Closure(&[]*LRItem{
+		self.grammar.productions[0].lrNext,
+	}))
+	i := 0
+	for _, item := range closures {
+		self.closureMap[hashLRItems(item)] = i
+		i++
+	}
+
+
+	return closures
+}
+
+// compute hash with the concat of 
+func hashLRItems(lr []*LRItem) int {
+	result := ""
+	for _, item := range lr {
+		result += item.String()
+	}
+
+	hash := md5.Sum([]byte(result))
+	
+	return int(binary.LittleEndian.Uint32(hash[:]))
+}
+
+// Compute the LR(0) closure operation on items, where items is a array of LR(0) items.
+func (self *lrTable) lr0Closure(items *[]*LRItem) []*LRItem {
+	result := make([]*LRItem, 0)
+	result = append(result, *items...)
+
+	didAdd := true
+	for didAdd {
+		didAdd = false
+		for _, item := range result {
+			for _, after := range item.lrAfter {
+				result = append(result, after.lrNext)
+				didAdd = true
+			}
+		}
+	}
+
+	return result
 }
 
 func createLRItem(g *grammar,p *production, dotIndex int) *LRItem {
@@ -167,7 +246,7 @@ func CreateGrammar(l *Lexer, r []*SyntaxRule, p []*Precedence) *grammar {
 
 	grammar.setPrecedence(p)
 	grammar.setRules(r)
-	grammar.start = r[0].Name
+	grammar.start = "S'"
 
 	// check unused, undefined, unreachable, cycles
 	grammar.checkGrammar()
@@ -340,9 +419,8 @@ func (g *grammar) setFirstFromProd(name string, p *[]string) bool {
 //
 //  [E -> . E PLUS E, E -> E . PLUS E, E -> E PLUS . E, E -> E PLUS E . ]
 func (g *grammar) buildLRItems() {
-	var last *production
 	for _, p := range g.productions {
-		last = p
+		var currentlr *LRItem
 		i := 0
 		lrItems := make([]*LRItem, 0)
 		for {
@@ -352,7 +430,15 @@ func (g *grammar) buildLRItems() {
 			} else {
 				item = createLRItem(g, p, i)
 			}
-			last.lrNext = item
+
+			if currentlr == nil {
+				p.lrNext = item
+				currentlr = item
+			} else {
+				currentlr.lrNext = item
+				currentlr = item
+			}
+
 			if item == nil {
 				break
 			}
@@ -383,6 +469,8 @@ func (g *grammar) setRules(rules []*SyntaxRule) {
 		panic("no rules!")
 	}
 
+	// add start rule
+	g.addProduction("S'", []string{rules[0].Name, ENDTOKEN}, nil)
 	for _, rule := range rules {
 		// valid whether it is terminal type
 		if _, ok := g.terminals[rule.Name]; ok {
