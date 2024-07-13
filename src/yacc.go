@@ -275,11 +275,10 @@ func createLRItem(g *grammar,p *production, dotIndex int) *LRItem {
 
 	// compute the list of productions after following
 	item.lrAfter = make([]*production, 0)
-	if dotIndex < (len(p.prod) - 1) {
-		nextProductions := g.prodNames[(*item.prod)[dotIndex + 1]]
-		for _, p := range nextProductions {
-			item.lrAfter = append(item.lrAfter, p)
-		}
+	if dotIndex < (item.len - 1) {
+		nextIndex := (*item.prod)[dotIndex + 1]
+		nextProductions := g.prodNames[nextIndex]
+		item.lrAfter = append(item.lrAfter, nextProductions...)
 	}
 
 	item.lrBefore = ""
