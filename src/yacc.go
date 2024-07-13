@@ -21,8 +21,9 @@ type Parser struct {
 type lrTable struct {
 	grammar *grammar
 	addCount int // Internal counter used to detect cycles
+	closures [][]*LRItem
 	closureMap map[int]int // map hash of lr closure to index of lr closure
-	lrAction map[int]map[string]string
+	lrAction map[int]map[string]int
 	lrGoto map[int]map[string]int
 	lrProductions []*production
 	// Cache of computed gotos
@@ -106,11 +107,11 @@ type LRItem struct {
 }
 
 func CreateLRTable(g *grammar) *lrTable {
-	lrTable := &lrTable {
+	table := &lrTable {
 		grammar: g,
 		addCount: 0,
 		closureMap: make(map[int]int),
-		lrAction: make(map[int]map[string]string),
+		lrAction: make(map[int]map[string]int),
 		lrGoto: make(map[int]map[string]int),
 		lrProductions: g.productions,
 		lrGotoCache: make(map[string][]*LRItem),
@@ -119,10 +120,65 @@ func CreateLRTable(g *grammar) *lrTable {
 
 	// Step 1: Construct C = { I0, I1, ... IN}, collection of LR(0) items
 	// This determines the number of states
-	closures := lrTable.lr0Items()
+	closures := table.lr0Items()
+	table.closures = closures
 	// lrTable.addLalrLookheads(c)
-	debugPrintClosures(closures)
-	return lrTable
+
+	// Let's build LR Table!
+	// build the parser table, state by state
+	actionProductions := make(map[int]map[string]*LRItem)
+	for cIndex, closure := range closures {
+		// loop over each production in I
+		stAction := make(map[string]int)
+		stActionItem := make(map[string]*LRItem)
+		actList := make(map[string]*LRItem)
+
+
+		for _, lrItem := range closure {
+			// dotIndex to the end of the production. Reduce
+			if (lrItem.lrIndex + 1) == lrItem.len {
+				// Start symbol. Accept!
+				if lrItem.name == "S'" {
+					stAction[ENDTOKEN] = 0
+					stActionItem[ENDTOKEN] = lrItem
+				} else {
+					// We are at the end of a production.  Reduce!
+				}
+			} else {
+				// We are not at the end of a production.  Shift
+				i := lrItem.lrIndex
+				front := (*lrItem.prod)[i + 1] // get symbol right after "."
+				if _, ok := g.terminals[front]; ok {
+					sGoto := table.lr0Goto(closure, front)
+					var stateId int
+					if s, ok := table.closureMap[hashLRItems(sGoto)]; ok {
+						stateId = s
+					} else {
+						stateId = -1
+					}
+
+					if stateId >= 0 {
+						// shift state
+						actList[front] = lrItem
+						if shift, ok := stAction[front]; ok {
+							// shift conflict!
+							if shift > 0 && shift != stateId {
+								panic(fmt.Sprintf("shift conflict in state %d", cIndex))
+							}
+						} else {
+							stAction[front] = stateId
+							stActionItem[front] = lrItem
+						}
+					}
+				}
+			}
+		}
+
+		table.lrAction[cIndex] = stAction
+		actionProductions[cIndex] = actList
+	}
+
+	return table
 }
 
 // get all the states of LR(0) closures
