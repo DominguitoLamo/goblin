@@ -20,6 +20,7 @@ type Parser struct {
 // This struct implements the LR table generation algorithm.
 type lrTable struct {
 	grammar *grammar
+	addCount int // Internal counter used to detect cycles
 	closureMap map[int]int // map hash of lr closure to index of lr closure
 	lrAction map[int]map[string]string
 	lrGoto map[int]map[string]int
@@ -45,6 +46,7 @@ type production struct{
 	pFunc func(Parser) error
 	lrItems []*LRItem
 	lrNext *LRItem
+	lr0Added int
 }
 
 type RuleOps struct {
@@ -106,6 +108,7 @@ type LRItem struct {
 func CreateLRTable(g *grammar) *lrTable {
 	lrTable := &lrTable {
 		grammar: g,
+		addCount: 0,
 		closureMap: make(map[int]int),
 		lrAction: make(map[int]map[string]string),
 		lrGoto: make(map[int]map[string]int),
@@ -116,9 +119,9 @@ func CreateLRTable(g *grammar) *lrTable {
 
 	// Step 1: Construct C = { I0, I1, ... IN}, collection of LR(0) items
 	// This determines the number of states
-	// c := lrTable.lr0Items()
+	closures := lrTable.lr0Items()
 	// lrTable.addLalrLookheads(c)
-
+	debugPrintClosures(closures)
 	return lrTable
 }
 
@@ -181,6 +184,8 @@ func hashLRItems(lr []*LRItem) int {
 
 // Compute the LR(0) closure operation on items, where items is a array of LR(0) items.
 func (self *lrTable) lr0Closure(items *[]*LRItem) []*LRItem {
+	self.addCount++
+
 	result := make([]*LRItem, 0)
 	result = append(result, *items...)
 
@@ -189,7 +194,11 @@ func (self *lrTable) lr0Closure(items *[]*LRItem) []*LRItem {
 		didAdd = false
 		for _, item := range result {
 			for _, after := range item.lrAfter {
+				if after.lr0Added == self.addCount {
+					continue
+				}
 				result = append(result, after.lrNext)
+				after.lr0Added = self.addCount
 				didAdd = true
 			}
 		}
@@ -688,6 +697,7 @@ func (g *grammar) cyclicRules() {
 	for n := range g.nonterminals {
 		terminates[n] = false
 	}
+	terminates[g.start] = true
 
 	for {
 		changed := false
@@ -895,4 +905,15 @@ func insertStr2Arr(arr *[]string, s string, index int) *[]string {
 	result[index] = s
 	copy(result[index+1:], (*arr)[index:])
 	return &result
+}
+
+func debugPrintClosures(closures [][]*LRItem) {
+	fmt.Printf("Closures:\n")
+
+	for cIndex, closure := range closures {
+		fmt.Printf("Closure %d:\n", cIndex + 1)
+		for lIndex, lr := range closure {
+			fmt.Printf("%d.%d - %s \n", cIndex + 1, lIndex + 1, lr.String())
+		}
+	}
 }

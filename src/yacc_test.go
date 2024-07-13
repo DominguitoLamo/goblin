@@ -190,4 +190,9 @@ func createCalcGrammar() *grammar {
 	g := CreateGrammar(l, rules, precedences)
 
 	return g
-} 
+}
+
+func TestLRTable(t *testing.T) {
+	g := createCalcGrammar()
+	CreateLRTable(g)
+}
