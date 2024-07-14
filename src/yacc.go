@@ -173,6 +173,55 @@ func CreateLRTable(g *grammar) *lrTable {
 	return table
 }
 
+func (self *lrTable) addLalrLookheads() {
+	nullable := self.computeNullableNonterminals()
+	DebugLog("nullable size: %d", nullable.size())
+
+	trans := self.findNonterminalTransition()
+
+	// readsets := self.computeReadSets(nullable, trans)
+
+	// lookd, included := self.computeLookbackIncludes(trans, nullable)
+
+	// followSets := self.computeFollowSets(trans, readset, included)
+
+	// self.addLookaheads(lookd, followsets)
+}
+
+// Creates a dictionary containing all of the non-terminals that might produce an empty production.
+func (self *lrTable) computeNullableNonterminals() *StrSet {
+	nullable := createSet()
+	numNullable := 0
+
+	for {
+		for _, p := range self.grammar.productions[1:] {
+			if p.prodSize == 0 {
+				nullable.add(p.name)
+				continue
+			}
+
+			isAllNullable := true
+			for _, t := range p.prod {
+				if !nullable.contains(t) {
+					isAllNullable = false
+					break
+				}
+			}
+			if isAllNullable {
+				nullable.add(p.name)
+			}
+		}
+
+		// is nullable changed
+		if nullable.size() == numNullable {
+			break
+		}
+		numNullable = nullable.size()
+	}
+
+	return nullable
+}
+
 // get all the states of LR(0) closures
 func (self *lrTable) lr0Items() [][]*LRItem {
 	closures := make([][]*LRItem, 0)
