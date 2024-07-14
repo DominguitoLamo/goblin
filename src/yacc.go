@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
 )
 
@@ -42,7 +41,6 @@ type production struct{
 	prod []string
 	prodSize int
 	symSet *StrSet
-	precDirect int
 	precLevel int
 	pFunc func(Parser) error
 	lrItems []*LRItem
@@ -73,18 +71,12 @@ type grammar struct {
 	nonterminals map[string][]int
 	first        map[string]*StrSet
 	follow       map[string]*StrSet
-	precedence   map[string]string // Tokentype:acc-level
+	precedence   map[string]int // Tokentype: level
 	usedPrecedence *StrSet
 	start        string
 }
 
-const (
-	PLEFT = iota
-	PRIGHT
-)
-
 type Precedence struct {
-	Direct    int
 	TokenType []string
 	Level     int
 }
@@ -163,7 +155,7 @@ func CreateLRTable(g *grammar) *lrTable {
 						if shift, ok := stAction[front]; ok {
 							// shift conflict!
 							if shift > 0 && shift != stateId {
-								panic(fmt.Sprintf("shift conflict in state %d", cIndex))
+								panic(fmt.Sprintf("shift conflict between states %d and %d", cIndex, shift))
 							}
 						} else {
 							stAction[front] = stateId
@@ -384,7 +376,7 @@ func CreateGrammar(l *Lexer, r []*SyntaxRule, p []*Precedence) *grammar {
 		nonterminals: make(map[string][]int),
 		first:        make(map[string]*StrSet),
 		follow:       make(map[string]*StrSet),
-		precedence:   make(map[string]string), // Tokentype:acc-level
+		precedence:   make(map[string]int), // Tokentype:acc-level
 		usedPrecedence: createSet(),
 	}
 
@@ -602,17 +594,14 @@ func (g *grammar) buildLRItems() {
 	}
 }
 
-func (g *grammar) setPrecedence(p []*Precedence) {
-	for _, p := range p {
-		if p.Direct > 1 {
-			panic("precedence direct must be left or right")
-		}
+func (g *grammar) setPrecedence(precs []*Precedence) {
+	for _, p := range precs {
 		for _, t := range p.TokenType {
 			if _, ok := g.precedence[t]; ok {
 				panic(fmt.Sprintf("precedence conflict for token type %s", t))
 			}
 
-			g.precedence[t] = fmt.Sprintf("%d-%d", p.Direct, p.Level)
+			g.precedence[t] = p.Level
 		}
 	}
 }
@@ -683,7 +672,7 @@ func (g *grammar) addProduction(name string, rOps []string, rFunc func(Parser) e
 	g.prodNames[name] = append(g.prodNames[name], p)
 }
 
-func (g *grammar) getPrecedence(name string, rOps []string) (string, []string) {
+func (g *grammar) getPrecedence(name string, rOps []string) (int, []string) {
 	// Determine the precedence level
 	const PREC = "%prec"
 	isPrecExist := false
@@ -717,7 +706,7 @@ func (g *grammar) getPrecedence(name string, rOps []string) (string, []string) {
 	if predInfo, ok := g.precedence[precName]; ok {
 		return predInfo, nil
 	} else {
-		return fmt.Sprintf("%d-%d", PRIGHT, 0), nil
+		return 0, nil
 	}
 }
 
@@ -913,7 +902,7 @@ func expStr2Arr(s string) []string {
   return reg.FindAllString(s, -1)
 }
 
-func createProduction(pnumber int, name string, ops []string, precInfo string, pfunc func(Parser) error) *production {
+func createProduction(pnumber int, name string, ops []string, precInfo int, pfunc func(Parser) error) *production {
 	p := &production{
 		id: pnumber,
 		name: name,
@@ -921,30 +910,14 @@ func createProduction(pnumber int, name string, ops []string, precInfo string, p
 		prodSize: len(ops),
 		// get the unique symbols in production
 		symSet: createSet(),
-		precDirect: PRIGHT,
 		precLevel: 0,
 		pFunc: pfunc,
 		lrItems: make([]*LRItem, 0),
 		lrNext: nil,
 	}
 
-	if precInfo != "" {
-		precArr := strings.Split(precInfo, "-")
-		if len(precArr) != 2 {
-			panic("invalid precedence info")
-		}
-	
-		if num, err := strconv.Atoi(precArr[0]); err != nil {
-			panic("invalid precedence info")
-		} else {
-			p.precDirect = num
-		}
-	
-		if num, err := strconv.Atoi(precArr[1]); err != nil {
-			panic("invalid precedence info")
-		} else {
-			p.precLevel = num
-		}
+	if precInfo != 0 {
+		p.precLevel = precInfo
 	}
 
 	for _, item := range ops {

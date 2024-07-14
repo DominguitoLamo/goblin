@@ -119,7 +119,6 @@ func createCalcGrammar() *grammar {
 
 	precedences := []*Precedence {
 		{
-			Direct: PLEFT,
 			TokenType: []string {
 				"PLUS",
 				"MINUS",
@@ -127,7 +126,6 @@ func createCalcGrammar() *grammar {
 			Level: 1,
 		},
 		{
-			Direct: PLEFT,
 			TokenType: []string {
 				"MULTIPLY",
 				"DIVIDE",
@@ -135,7 +133,6 @@ func createCalcGrammar() *grammar {
 			Level: 2,
 		},
 		{
-			Direct: PRIGHT,
 			TokenType: []string {
 				"UMINUS",
 			},
