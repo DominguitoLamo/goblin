@@ -36,6 +36,11 @@ type symbolCache struct {
 	end []*LRItem
 }
 
+type looked struct {
+	state int
+	item *LRItem
+}
+
 type production struct{
 	id int
 	name string
@@ -189,8 +194,121 @@ func (self *lrTable) addLalrLookheads() {
 	// self.addLookaheads(lookd, followsets)
 }
 
-func (self *lrTable) computeLookbackIncludes(trans *StrSet, nullable *StrSet) (map[string]*StrSet, *StrSet) {
+// Determines the lookback and includes relations
+//
+// LOOKBACK:
+//
+// This relation is determined by running the LR(0) state machine forward.
+// For example, starting with a production "N : . A B C", we run it forward
+// to obtain "N : A B C ."   We then build a relationship between this final
+// state and the starting state.   These relationships are stored in a dictionary
+// lookdict.
+//
+// INCLUDES:
+//
+// Computes the INCLUDE() relation (p,A) INCLUDES (p',B).
+//
+// This relation is used to determine non-terminal transitions that occur
+// inside of other non-terminal transition states.   (p,A) INCLUDES (p', B)
+// if the following holds:
+//
+//       B -> LAT, where T -> epsilon and p' -L-> p
+//
+// L is essentially a prefix (which may be empty), T is a suffix that must be
+// able to derive an empty string.  State p' must lead to state p with the string L.
+//
+func (self *lrTable) computeLookbackIncludes(trans *StrSet, nullable *StrSet) (map[string][]*looked, map[string]*StrSet) {
+	lookDict := make(map[string][]*looked)
+	includedDict := make(map[string]*StrSet)
 
+	// loop over all transitions and compute lookbacks and includes
+	trans.forEach(func(tran string){
+		state, nonTerminal := getStateAndNonterminal(tran)
+		lookb := make([]*looked, 0)
+		included := createSet()
+
+		for _, lrItem := range self.closures[state] {
+			if lrItem.name != nonTerminal {
+				continue
+			}
+
+			// we have a name match.  We now follow the production all the way
+            // through the state machine until we get the . on the right hand side
+			lrIndex := lrItem.lrIndex
+			currentState := state
+			
+			for lrIndex < lrItem.len - 1 {
+				lrIndex++
+				token := (*lrItem.prod)[lrIndex]
+				newTran := fmt.Sprintf("%d-%s", currentState, token)
+				// Check to see if this token and state are a non-terminal transition
+				if trans.contains(newTran) {
+					i := lrIndex + 1
+					isIncluded := true
+					for i < lrItem.len {
+						t := (*lrItem.prod)[i]
+						// if we have a terminal, we can't include it
+						if _, ok := self.grammar.terminals[t]; ok {
+							isIncluded = false
+							break
+						}
+						// if we have a non-terminal, we need to check if it is nullable
+						if !nullable.contains(t) {
+							isIncluded = false
+							break
+						}
+						i++
+					}
+					// if the prods of the productions are all nullable or all non-terminal, we can include it.
+					// or the last one prod in the lritem of the current state is the non-terminal indicated, we can include it.
+					if isIncluded {
+						included.add(newTran)
+					}
+				}
+
+				// go to next set
+				cGoto := self.lr0Goto(self.closures[currentState], token)
+				currentState = self.closureMap[hashLRItems(cGoto)]
+			}
+
+			// When we get here, currentState is the final state, now we have to locate the production
+			for _, csItem := range self.closures[currentState] {
+				if csItem.name != lrItem.name {
+					continue
+				}
+				if csItem.len != lrItem.len {
+					continue
+				}
+
+				i := 0
+				isLooked := true
+				for i < csItem.lrIndex {
+					if (*csItem.prod)[i] != (*lrItem.prod)[i + 1] {
+						isLooked = false
+						break
+					}
+					i++
+				}
+				if isLooked {
+					lookb = append(lookb, &looked{
+						state: currentState,
+						item: csItem,
+					})
+
+				}
+			}
+		}
+
+		lookDict[tran] = lookb
+		included.forEach(func(item string) {
+			if _, ok := includedDict[item]; !ok {
+				includedDict[item] = createSet()
+			}
+			includedDict[item].add(tran)
+		})
+	})
+
+	return lookDict, includedDict
 }
 
 func (self *lrTable) computeReadSets(trans *StrSet) map[string]*StrSet {
