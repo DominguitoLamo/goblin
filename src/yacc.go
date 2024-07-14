@@ -179,7 +179,7 @@ func (self *lrTable) addLalrLookheads() {
 
 	trans := self.findNonterminalTransition()
 
-	// readsets := self.computeReadSets(nullable, trans)
+	readsets := self.computeReadSets(nullable, trans)
 
 	// lookd, included := self.computeLookbackIncludes(trans, nullable)
 
@@ -220,6 +220,30 @@ func (self *lrTable) computeNullableNonterminals() *StrSet {
 	}
 
 	return nullable
+}
+
+// Given a set of LR(0) items, this functions finds all of the non-terminal
+// transitions.
+func (self *lrTable) findNonterminalTransition() *StrSet {
+	closures := self.closures
+	trans := createSet()
+
+	for cIndex, closure := range closures {
+		for _, lrItem := range closure {
+			lrIndex := lrItem.lrIndex
+			if lrIndex < (lrItem.len - 1) {
+				nonTerm := (*lrItem.prod)[lrIndex + 1]
+				if _, ok := self.grammar.nonterminals[nonTerm]; ok {
+					t := fmt.Sprintf("%d-%s", cIndex, nonTerm)
+					if !trans.contains(t) {
+						trans.add(t)
+					}
+				}
+			}
+		}
+	}
+
+	return trans
 }
 
 // get all the states of LR(0) closures
