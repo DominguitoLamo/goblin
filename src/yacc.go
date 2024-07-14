@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -179,13 +180,53 @@ func (self *lrTable) addLalrLookheads() {
 
 	trans := self.findNonterminalTransition()
 
-	readsets := self.computeReadSets(nullable, trans)
+	readsets := self.computeReadSets(trans)
 
-	// lookd, included := self.computeLookbackIncludes(trans, nullable)
+	lookd, included := self.computeLookbackIncludes(trans, nullable)
 
 	// followSets := self.computeFollowSets(trans, readset, included)
 
 	// self.addLookaheads(lookd, followsets)
+}
+
+func (self *lrTable) computeLookbackIncludes(trans *StrSet, nullable *StrSet) (map[string]*StrSet, *StrSet) {
+
+}
+
+func (self *lrTable) computeReadSets(trans *StrSet) map[string]*StrSet {
+	readset := make(map[string]*StrSet)
+
+	trans.forEach(func(tran string) {
+		state, nonTerminal := getStateAndNonterminal(tran)
+		readset[tran] = createSet()
+
+		if state == 0 {
+			readset[tran].add(ENDTOKEN)
+		}
+
+		cGoto := self.lr0Goto(self.closures[state], nonTerminal)
+		for _, lrItem := range cGoto {
+			if lrItem.lrIndex < (lrItem.len - 1) {
+				a := (*lrItem.prod)[lrItem.lrIndex + 1]
+				if _, ok := self.grammar.terminals[a]; ok {
+					readset[tran].add(a)
+				}
+			}
+		}
+	})
+
+	return readset
+}
+
+func getStateAndNonterminal(s string) (int, string) {
+	arr := strings.Split(s, "-")
+	if len(arr) != 2 {
+		panic("invalid transition string")
+	}
+	nonTerminal := arr[1]
+	state, _ := strconv.Atoi(arr[0])
+
+	return state, nonTerminal
 }
 
 // Creates a dictionary containing all of the non-terminals that might produce an empty production.
