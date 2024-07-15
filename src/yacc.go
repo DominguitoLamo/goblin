@@ -26,6 +26,7 @@ type lrTable struct {
 	lrAction map[int]map[string]int
 	lrGoto map[int]map[string]int
 	lrProductions []*production
+	actionProductions map[int]map[string]*LRItem
 	// Cache of computed gotos
 	lrGotoCache map[string][]*LRItem
 	symbolGotoCache map[string]*symbolCache
@@ -99,7 +100,7 @@ type LRItem struct {
 	lrNext *LRItem
 	lrAfter []*production
 	lrBefore string
-	lookaheads map[string]int
+	lookaheads map[int]*StrSet
 	len int
 	symSet *StrSet
 }
@@ -112,6 +113,7 @@ func CreateLRTable(g *grammar) *lrTable {
 		lrAction: make(map[int]map[string]int),
 		lrGoto: make(map[int]map[string]int),
 		lrProductions: g.productions,
+		actionProductions: make(map[int]map[string]*LRItem),
 		lrGotoCache: make(map[string][]*LRItem),
 		symbolGotoCache: make(map[string]*symbolCache),
 	}
@@ -124,7 +126,6 @@ func CreateLRTable(g *grammar) *lrTable {
 
 	// Let's build LR Table!
 	// build the parser table, state by state
-	actionProductions := make(map[int]map[string]*LRItem)
 	for cIndex, closure := range closures {
 		// loop over each production in I
 		stAction := make(map[string]int)
@@ -141,6 +142,32 @@ func CreateLRTable(g *grammar) *lrTable {
 					stActionItem[ENDTOKEN] = lrItem
 				} else {
 					// We are at the end of a production.  Reduce!
+					laHeads := lrItem.lookaheads[cIndex]
+					laHeads.forEach(func(head string) {
+						r, isHead := stAction[head]
+						if isHead {
+							// shift/ reduce conflict
+							if r > 0 {
+								// precdence is the key to make decision. shift is favored.
+								sLevel := g.precedence[head]
+								rLevel := g.productions[lrItem.number].precLevel
+								// reduce
+								if rLevel > sLevel {
+									stAction[head] = -r
+									stActionItem[head] = lrItem
+								}
+							} else {
+								// reduce/reduce conflict. Invoke panic!
+								oldl := stActionItem[head]
+								panic(fmt.Sprintf("reduce/reduce conflict between %s and %s in state %d",
+								 oldl.String(), lrItem.String(), cIndex))
+							}
+						} else {
+							// just reduce
+							stAction[head] = -r
+							stActionItem[head] = lrItem
+						}
+					})
 				}
 			} else {
 				// We are not at the end of a production.  Shift
@@ -172,8 +199,28 @@ func CreateLRTable(g *grammar) *lrTable {
 			}
 		}
 
+		// construct goto table
+		stGoto := make(map[string]int)
+		nonTerminals := createSet()
+		for _, l := range closure {
+			l.symSet.forEach(func(s string){
+				if _, ok := g.nonterminals[s]; ok {
+					nonTerminals.add(s)
+				}
+			})
+		}
+
+		nonTerminals.forEach(func(nt string) {
+			gotoItems := table.lr0Goto(closure, nt)
+			gotoId := table.closureMap[hashLRItems(gotoItems)]
+			if gotoId >= 0 {
+				stGoto[nt] = gotoId
+			}
+		})
+
 		table.lrAction[cIndex] = stAction
-		actionProductions[cIndex] = actList
+		table.lrGoto[cIndex] = stGoto
+		table.actionProductions[cIndex] = actList
 	}
 
 	return table
@@ -193,6 +240,25 @@ func (self *lrTable) addLalrLookheads() {
 	followSets := self.computeFollowSets(trans, readsets, included)
 
 	self.addLookaheads(lookd, followSets)
+}
+
+func (self *lrTable) addLookaheads(lookd map[string][]*looked, followSets map[string]*StrSet) {
+	for tran, lookb := range lookd {
+		for _, l := range lookb {
+			state := l.state
+			prod := l.item
+			if _, ok := prod.lookaheads[state]; !ok {
+				prod.lookaheads[state] = createSet()
+			}
+
+			follow := followSets[tran]
+			follow.forEach(func(f string){
+				if !prod.lookaheads[state].contains(f) {
+					prod.lookaheads[state].add(f)
+				}
+			})
+		}
+	}
 }
 
 func (self *lrTable ) computeFollowSets(trans *StrSet, readsets map[string]*StrSet, included map[string]*StrSet) map[string]*StrSet {
@@ -564,7 +630,7 @@ func createLRItem(g *grammar,p *production, dotIndex int) *LRItem {
 		name: p.name,
 		number: p.id,
 		lrIndex: dotIndex,
-		lookaheads: make(map[string]int),
+		lookaheads: make(map[int]*StrSet),
 		symSet: p.symSet,
 		len: 0,
 	}
