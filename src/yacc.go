@@ -105,7 +105,7 @@ type LRItem struct {
 	symSet *StrSet
 }
 
-func CreateLRTable(g *grammar) *lrTable {
+func createLRTable(g *grammar) *lrTable {
 	table := &lrTable {
 		grammar: g,
 		addCount: 0,

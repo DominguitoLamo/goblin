@@ -191,5 +191,5 @@ func createCalcGrammar() *grammar {
 
 func TestLRTable(t *testing.T) {
 	g := createCalcGrammar()
-	CreateLRTable(g)
+	createLRTable(g)
 }
