@@ -122,7 +122,8 @@ func createLRTable(g *grammar) *lrTable {
 	// This determines the number of states
 	closures := table.lr0Items()
 	table.closures = closures
-	// lrTable.addLalrLookheads(c)
+	table.addLalrLookheads()
+	debugPrintClosures(table)
 
 	// Let's build LR Table!
 	// build the parser table, state by state
@@ -1252,13 +1253,18 @@ func insertStr2Arr(arr *[]string, s string, index int) *[]string {
 	return &result
 }
 
-func debugPrintClosures(closures [][]*LRItem) {
+func debugPrintClosures(table *lrTable) {
+	closures := table.closures
+
 	fmt.Printf("Closures:\n")
 
 	for cIndex, closure := range closures {
 		fmt.Printf("Closure %d:\n", cIndex + 1)
 		for lIndex, lr := range closure {
 			fmt.Printf("%d.%d - %s \n", cIndex + 1, lIndex + 1, lr.String())
+			if _, ok := lr.lookaheads[cIndex]; ok {
+				fmt.Printf("  lookaheads: %s \n", lr.lookaheads[cIndex].string())
+			}
 		}
 	}
 }
