@@ -229,7 +229,6 @@ func createLRTable(g *grammar) *lrTable {
 
 func (self *lrTable) addLalrLookheads() {
 	nullable := self.computeNullableNonterminals()
-	DebugLog("nullable size: %d", nullable.size())
 
 	trans := self.findNonterminalTransition()
 
@@ -272,10 +271,11 @@ func (self *lrTable ) computeFollowSets(trans *StrSet, readsets map[string]*StrS
 		followTerminals := readsets[tran]
 		followsets[tran].addSet(followTerminals)
 
-		includedSet := included[tran]
-		includedSet.forEach(func(i string) {
-			followsets[tran].addSet(readsets[i])
-		})
+		if includedSet, ok := included[tran]; ok {
+			includedSet.forEach(func(i string) {
+				followsets[tran].addSet(readsets[i])
+			})
+		}
 	})
 
 	return followsets
