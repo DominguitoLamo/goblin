@@ -706,6 +706,7 @@ func CreateGrammar(l *Lexer, r []*SyntaxRule, p []*Precedence) *grammar {
 		}
 		grammar.terminals[key] = []int{}
 	}
+	grammar.terminals[ENDTOKEN] = []int{}
 
 	grammar.setPrecedence(p)
 	grammar.setRules(r)
