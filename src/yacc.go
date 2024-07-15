@@ -185,15 +185,34 @@ func (self *lrTable) addLalrLookheads() {
 
 	trans := self.findNonterminalTransition()
 
+	// get the next terminal in each trans
 	readsets := self.computeReadSets(trans)
 
 	lookd, included := self.computeLookbackIncludes(trans, nullable)
 
-	// followSets := self.computeFollowSets(trans, readset, included)
+	followSets := self.computeFollowSets(trans, readsets, included)
 
-	// self.addLookaheads(lookd, followsets)
+	self.addLookaheads(lookd, followSets)
 }
 
+func (self *lrTable ) computeFollowSets(trans *StrSet, readsets map[string]*StrSet, included map[string]*StrSet) map[string]*StrSet {
+	followsets := make(map[string]*StrSet)
+
+	trans.forEach(func(tran string) {
+		if _, ok := followsets[tran]; !ok {
+			followsets[tran] = createSet()
+		}
+		followTerminals := readsets[tran]
+		followsets[tran].addSet(followTerminals)
+
+		includedSet := included[tran]
+		includedSet.forEach(func(i string) {
+			followsets[tran].addSet(readsets[i])
+		})
+	})
+
+	return followsets
+}
 // Determines the lookback and includes relations
 //
 // LOOKBACK:
