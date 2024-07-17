@@ -26,7 +26,7 @@ type lrTable struct {
 	addCount int // Internal counter used to detect cycles
 	closures [][]*LRItem
 	closureMap map[int]int // map hash of lr closure to index of lr closure
-	lrAction map[int]map[string]int
+	lrAction map[int]map[string]string
 	lrGoto map[int]map[string]int
 	lrProductions []*production
 	actionProductions map[int]map[string]*LRItem
@@ -163,12 +163,12 @@ func (p *Parser) lrTableMD() string {
 		result += fmt.Sprintf("# <a id=S%d></a>S%d\n", i, i)
 		result += "\n"
 		for _, item := range closure {
-			result += fmt.Sprintf(" %s \n", item.String())
+			result += fmt.Sprintf("- %s \n", item.String())
 			// lookahead
 			if item.lookaheads != nil {
 				if heads, ok := item.lookaheads[i]; ok {
-					result += " lookahead: "
-					result += heads.string()
+					result += "\n    lookahead: "
+					result += heads.string() + "\n"
 					result += "\n"
 				}
 			}
@@ -193,17 +193,22 @@ func (p *Parser) lrTableMD() string {
 	result += "|\n"
 
 	// table body
-	for i := range p.table.lrAction {
-		result += fmt.Sprintf("| [S%d](#S%d)", i, i)
+	for i := range p.table.closures {
+		result += fmt.Sprintf("| [S%d](#S%d) ", i, i)
 		for term := range p.grammar.terminals {
-			action := p.table.lrAction[i][term]
+			action, ok := p.table.lrAction[i][term]
+			if !ok {
+				result += "| none "
+				continue
+			}
 			// shift
-			if action > 0 {
-				result += fmt.Sprintf("| [s%d](#S%d)", action, action)
-			} else if action < 0 {
-				result += fmt.Sprintf("| r%d", -action)
-			} else {
-				result += "| -"
+			if action[0] == 's' {
+				id := turnAction2id(action)
+				result += fmt.Sprintf("| [%s](#S%d) ", action, id)
+			} else if action[0] == 'r' {
+				// reduce
+				id := turnAction2id(action)
+				result += fmt.Sprintf("| [%s](#P%d) ", action, id)
 			}
 		}
 		result += "|\n"
@@ -215,25 +220,25 @@ func (p *Parser) lrTableMD() string {
 
 	// table header
 	result += "| State/Nonterminates"
-	for non, _ := range p.grammar.nonterminals {
+	for non := range p.grammar.nonterminals {
 		result += fmt.Sprintf(" | %s ", non)
 	}
 	result += "|\n"
 	result += "| --- "
-	for _, _ = range p.grammar.terminals {
+	for _, _ = range p.grammar.nonterminals {
 		result += " | --- "
 	}
 	result += "|\n"
 
 	// table body
-	for i := range p.table.lrGoto {
-		result += fmt.Sprintf("| [S%d](#S%d)", i, i)
+	for i := range p.table.closures {
+		result += fmt.Sprintf("| [S%d](#S%d) ", i, i)
 		for non := range p.grammar.nonterminals {
-			lgoto := p.table.lrGoto[i][non]
-			if lgoto > 0 {
-				result += fmt.Sprintf("| [s%d](#S%d)", lgoto, lgoto)
+			lgoto, ok := p.table.lrGoto[i][non]
+			if ok {
+				result += fmt.Sprintf("| [s%d](#S%d) ", lgoto, lgoto)
 			} else {
-				result += "| -"
+				result += "| none "
 			}
 		}
 		result += "|\n"
@@ -252,9 +257,9 @@ func (p *Parser) grammarMD() string {
 	for term, states := range p.grammar.terminals {
 		set := createSet()
 		for _, state := range states {
-			set.add(string(state))
+			set.add(fmt.Sprintf("%d", state))
 		}
-		result += fmt.Sprintf(" %s : %s \n", term, set.string())
+		result += fmt.Sprintf("- %s : %s \n", term, set.string())
 	}
 	result += "\n"
 
@@ -264,9 +269,9 @@ func (p *Parser) grammarMD() string {
 	for term, states := range p.grammar.nonterminals {
 		set := createSet()
 		for _, state := range states {
-			set.add(string(state))
+			set.add(fmt.Sprintf("%d", state))
 		}
-		result += fmt.Sprintf(" %s : %s \n", term, set.string())
+		result += fmt.Sprintf("- %s : %s \n", term, set.string())
 	}
 	result += "\n"
 
@@ -274,7 +279,7 @@ func (p *Parser) grammarMD() string {
 	result += " Precedence\n"
 	result += "\n"
 	for term, level := range p.grammar.precedence {
-		result += fmt.Sprintf(" %s : %d \n", term, level)
+		result += fmt.Sprintf("- %s : %d \n", term, level)
 	}
 	result += "\n"
 
@@ -282,7 +287,7 @@ func (p *Parser) grammarMD() string {
 	result += "## Productions\n"
 	result += "\n"
 	for _, prod := range p.grammar.productions {
-		result += fmt.Sprintf("### <a id=P%d></a>P%d %s -> %s \n", prod.id, prod.id, prod.name, strings.Join(prod.prod, " "))
+		result += fmt.Sprintf("### <a id=P%d></a>P%d. %s -> %s \n", prod.id, prod.id, prod.name, strings.Join(prod.prod, " "))
 	}
 
 	return result
@@ -293,7 +298,7 @@ func (p *Parser) lexMD() string {
 	result += "\n"
 
 	for key, val := range p.lexer.rules {
-		result += fmt.Sprintf("%s : %s \n", key, val)
+		result += fmt.Sprintf("- %s : %s \n", key, val)
 	}
 	result += "\n"
 
@@ -306,7 +311,7 @@ func createLRTable(g *grammar) *lrTable {
 		grammar: g,
 		addCount: 0,
 		closureMap: make(map[int]int),
-		lrAction: make(map[int]map[string]int),
+		lrAction: make(map[int]map[string]string),
 		lrGoto: make(map[int]map[string]int),
 		lrProductions: g.productions,
 		actionProductions: make(map[int]map[string]*LRItem),
@@ -325,17 +330,15 @@ func createLRTable(g *grammar) *lrTable {
 	// build the parser table, state by state
 	for cIndex, closure := range closures {
 		// loop over each production in I
-		stAction := make(map[string]int)
+		stAction := make(map[string]string)
 		stActionItem := make(map[string]*LRItem)
-		actList := make(map[string]*LRItem)
-
 
 		for _, lrItem := range closure {
 			// dotIndex to the end of the production. Reduce
 			if (lrItem.lrIndex + 1) == lrItem.len {
 				// Start symbol. Accept!
 				if lrItem.name == "S'" {
-					stAction[ENDTOKEN] = 0
+					stAction[ENDTOKEN] = "accepted"
 					stActionItem[ENDTOKEN] = lrItem
 				} else {
 					// We are at the end of a production.  Reduce!
@@ -344,13 +347,13 @@ func createLRTable(g *grammar) *lrTable {
 						r, isHead := stAction[head]
 						if isHead {
 							// shift/ reduce conflict
-							if r > 0 {
+							if r[0] == 's' {
 								// precdence is the key to make decision. shift is favored.
 								sLevel := g.precedence[head]
 								rLevel := g.productions[lrItem.number].precLevel
 								// reduce
 								if rLevel > sLevel {
-									stAction[head] = -r
+									stAction[head] = fmt.Sprintf("r%d", lrItem.number)
 									stActionItem[head] = lrItem
 								}
 							} else {
@@ -361,7 +364,7 @@ func createLRTable(g *grammar) *lrTable {
 							}
 						} else {
 							// just reduce
-							stAction[head] = -r
+							stAction[head] = fmt.Sprintf("r%d", lrItem.number)
 							stActionItem[head] = lrItem
 						}
 					})
@@ -376,19 +379,32 @@ func createLRTable(g *grammar) *lrTable {
 					if s, ok := table.closureMap[hashLRItems(sGoto)]; ok {
 						stateId = s
 					} else {
-						stateId = -1
+						panic(fmt.Sprintf("LR0 goto state of %s not found in state %d", lrItem.String(), cIndex))
 					}
 
 					if stateId >= 0 {
 						// shift state
-						actList[front] = lrItem
 						if shift, ok := stAction[front]; ok {
-							// shift conflict!
-							if shift > 0 && shift != stateId {
-								panic(fmt.Sprintf("shift conflict between states %d and %d", cIndex, shift))
+							// shift/shift conflict!
+							if shift[0] == 's' {
+								oldId := turnAction2id(shift)
+								if oldId != stateId {
+									panic(fmt.Sprintf("shift conflict between states %d and %d", cIndex, oldId))
+								}
+							} else if shift[0] == 'r' {
+								// reduce/shift conflict
+								oldl := g.productions[turnAction2id(shift)]
+								oldPrec := oldl.precLevel
+								prec := g.precedence[front]
+
+								if prec >= oldPrec  {
+									stAction[front] = fmt.Sprintf("s%d", stateId)
+									stActionItem[front] = lrItem
+								}
 							}
+
 						} else {
-							stAction[front] = stateId
+							stAction[front] = fmt.Sprintf("s%d", stateId)
 							stActionItem[front] = lrItem
 						}
 					}
@@ -417,10 +433,19 @@ func createLRTable(g *grammar) *lrTable {
 
 		table.lrAction[cIndex] = stAction
 		table.lrGoto[cIndex] = stGoto
-		table.actionProductions[cIndex] = actList
+		table.actionProductions[cIndex] = stActionItem
 	}
 
 	return table
+}
+
+func turnAction2id(action string) int {
+	sStr := action[1:]
+	state, err := strconv.Atoi(sStr)
+	if err != nil {
+		panic(err)
+	}
+	return state
 }
 
 func (self *lrTable) addLalrLookheads() {
