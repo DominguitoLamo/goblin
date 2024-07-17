@@ -180,14 +180,24 @@ func (p *Parser) lrTableMD() string {
 	result += "## Action Table\n"
 	result += "\n"
 
+	map2Arr := func(m map[string][]int) []string {
+		a := make([]string, 0)
+		for key := range m {
+			a = append(a, key)
+		}
+
+		return a
+	}
+
 	// table header
+	tArr := map2Arr(p.grammar.terminals)
 	result += "| State/Terminates"
-	for term, _ := range p.grammar.terminals {
+	for _, term := range tArr {
 		result += fmt.Sprintf(" | %s ", term)
 	}
 	result += "|\n"
 	result += "| --- "
-	for _, _ = range p.grammar.terminals {
+	for _, _ = range tArr {
 		result += " | --- "
 	}
 	result += "|\n"
@@ -195,7 +205,7 @@ func (p *Parser) lrTableMD() string {
 	// table body
 	for i := range p.table.closures {
 		result += fmt.Sprintf("| [S%d](#S%d) ", i, i)
-		for term := range p.grammar.terminals {
+		for _, term := range tArr {
 			action, ok := p.table.lrAction[i][term]
 			if !ok {
 				result += "| none "
@@ -209,6 +219,9 @@ func (p *Parser) lrTableMD() string {
 				// reduce
 				id := turnAction2id(action)
 				result += fmt.Sprintf("| [%s](#P%d) ", action, id)
+			} else {
+				// other case
+				result += fmt.Sprintf("| %s ", action)
 			}
 		}
 		result += "|\n"
@@ -219,13 +232,14 @@ func (p *Parser) lrTableMD() string {
 	result += "\n"
 
 	// table header
+	nArr := map2Arr(p.grammar.nonterminals)
 	result += "| State/Nonterminates"
-	for non := range p.grammar.nonterminals {
+	for _, non := range nArr {
 		result += fmt.Sprintf(" | %s ", non)
 	}
 	result += "|\n"
 	result += "| --- "
-	for _, _ = range p.grammar.nonterminals {
+	for _, _ = range nArr {
 		result += " | --- "
 	}
 	result += "|\n"
@@ -233,7 +247,7 @@ func (p *Parser) lrTableMD() string {
 	// table body
 	for i := range p.table.closures {
 		result += fmt.Sprintf("| [S%d](#S%d) ", i, i)
-		for non := range p.grammar.nonterminals {
+		for _, non := range nArr {
 			lgoto, ok := p.table.lrGoto[i][non]
 			if ok {
 				result += fmt.Sprintf("| [s%d](#S%d) ", lgoto, lgoto)
@@ -1481,9 +1495,9 @@ func debugPrintClosures(table *lrTable) {
 	fmt.Printf("Closures:\n")
 
 	for cIndex, closure := range closures {
-		fmt.Printf("Closure %d:\n", cIndex + 1)
+		fmt.Printf("Closure %d:\n", cIndex)
 		for lIndex, lr := range closure {
-			fmt.Printf("%d.%d - %s \n", cIndex + 1, lIndex + 1, lr.String())
+			fmt.Printf("%d.%d - %s \n", cIndex, lIndex, lr.String())
 			if _, ok := lr.lookaheads[cIndex]; ok {
 				fmt.Printf("  lookaheads: %s \n", lr.lookaheads[cIndex].string())
 			}
