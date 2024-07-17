@@ -193,3 +193,92 @@ func TestLRTable(t *testing.T) {
 	g := createCalcGrammar()
 	createLRTable(g)
 }
+
+func TestCreateParser(t *testing.T) {
+    symbols := map[string]string {
+        "NAME": "[a-zA-Z_][a-zA-Z0-9_]*",
+        "NUMBER": "[0-9]+",
+
+        "PLUS": "\\+",
+        "MINUS": "\\-",
+        "MULTIPLY": "\\*",
+        "DIVIDE": "/",
+        "ASSIGN": "=",
+
+        "LPAREN": "\\(",
+        "RPAREN": "\\)",
+    }
+
+    ignores := []string{
+        "\t"," ",
+    }
+
+	precedences := []*Precedence {
+		{
+			TokenType: []string {
+				"PLUS",
+				"MINUS",
+			},
+			Level: 1,
+		},
+		{
+			TokenType: []string {
+				"MULTIPLY",
+				"DIVIDE",
+			},
+			Level: 2,
+		},
+		{
+			TokenType: []string {
+				"UMINUS",
+			},
+			Level: 3,
+		},
+	}
+
+	rules := []*SyntaxRule {
+		{
+			Name: "statement",
+			Expand: []*RuleOps {
+				{
+					Ops: "NAME ASSIGN expr",
+				},
+				{
+					Ops: "expr",
+				},
+			},
+		},
+		{
+			Name: "expr",
+			Expand: []*RuleOps {
+				{
+					Ops: "expr PLUS expr",
+				},
+				{
+					Ops: "expr MINUS expr",
+				},
+				{
+					Ops: "expr MULTIPLY expr",
+				},
+				{
+					Ops: "expr DIVIDE expr",
+				},
+				{
+					Ops: "MINUS expr %prec UMINUS",
+				},
+				{
+					Ops: "LPAREN expr RPAREN",
+				},
+				{
+					Ops: "NUMBER",
+				},
+				{
+					Ops: "NAME",
+				},
+			},
+		},
+	}
+	
+	p := CreateParser(symbols, ignores, rules, precedences)
+	p.WriteMDInfo("calc", "../")
+}

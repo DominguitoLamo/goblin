@@ -127,10 +127,18 @@ func (p *Parser) Tokenize(s string) ([]*Token, error) {
 func (p *Parser) WriteMDInfo(name string, path string) {
 	result := ""
 	result = p.lexMD()
+	result += p.grammarMD()
+	result += p.lrTableMD()
 
 	// write string to file
-	filePath := filepath.Join(path, name + ".md")
-	file, fileErr := os.Create(filePath)
+	var mdPath string
+	if strings.Contains(name, ".md") {
+		mdPath = filepath.Join(path, name)
+	} else {
+		mdPath = filepath.Join(path, name + ".md")
+	}
+
+	file, fileErr := os.Create(mdPath)
 	if fileErr != nil {
 		panic(fileErr)
 	}
@@ -141,6 +149,155 @@ func (p *Parser) WriteMDInfo(name string, path string) {
 	}
 
 	fmt.Printf("file %s is written successfully in %s\n", name, path)
+}
+
+func (p *Parser) lrTableMD() string {
+	result := "# LR Table\n"
+	result += "\n"
+
+	// states
+	result += "## States\n"
+	result += "\n"
+
+	for i, closure := range p.table.closures {
+		result += fmt.Sprintf("# <a id=S%d></a>S%d\n", i, i)
+		result += "\n"
+		for _, item := range closure {
+			result += fmt.Sprintf(" %s \n", item.String())
+			// lookahead
+			if item.lookaheads != nil {
+				if heads, ok := item.lookaheads[i]; ok {
+					result += " lookahead: "
+					result += heads.string()
+					result += "\n"
+				}
+			}
+		}
+		result += "\n"
+	}
+		
+	// action table
+	result += "## Action Table\n"
+	result += "\n"
+
+	// table header
+	result += "| State/Terminates"
+	for term, _ := range p.grammar.terminals {
+		result += fmt.Sprintf(" | %s ", term)
+	}
+	result += "|\n"
+	result += "| --- "
+	for _, _ = range p.grammar.terminals {
+		result += " | --- "
+	}
+	result += "|\n"
+
+	// table body
+	for i := range p.table.lrAction {
+		result += fmt.Sprintf("| [S%d](#S%d)", i, i)
+		for term := range p.grammar.terminals {
+			action := p.table.lrAction[i][term]
+			// shift
+			if action > 0 {
+				result += fmt.Sprintf("| [s%d](#S%d)", action, action)
+			} else if action < 0 {
+				result += fmt.Sprintf("| r%d", -action)
+			} else {
+				result += "| -"
+			}
+		}
+		result += "|\n"
+	}
+
+	// goto table
+	result += "## Goto Table\n"
+	result += "\n"
+
+	// table header
+	result += "| State/Nonterminates"
+	for non, _ := range p.grammar.nonterminals {
+		result += fmt.Sprintf(" | %s ", non)
+	}
+	result += "|\n"
+	result += "| --- "
+	for _, _ = range p.grammar.terminals {
+		result += " | --- "
+	}
+	result += "|\n"
+
+	// table body
+	for i := range p.table.lrGoto {
+		result += fmt.Sprintf("| [S%d](#S%d)", i, i)
+		for non := range p.grammar.nonterminals {
+			lgoto := p.table.lrGoto[i][non]
+			if lgoto > 0 {
+				result += fmt.Sprintf("| [s%d](#S%d)", lgoto, lgoto)
+			} else {
+				result += "| -"
+			}
+		}
+		result += "|\n"
+	}
+
+	return result
+}
+
+func (p *Parser) grammarMD() string {
+	result := "# Grammar\n"
+	result += "\n"
+
+	// terminates
+	result += "## Terminates\n"
+	result += "\n"
+	for term, states := range p.grammar.terminals {
+		set := createSet()
+		for _, state := range states {
+			set.add(string(state))
+		}
+		result += fmt.Sprintf(" %s : %s \n", term, set.string())
+	}
+	result += "\n"
+
+	// nonterminates
+	result += "## Non-Terminates\n"
+	result += "\n"
+	for term, states := range p.grammar.nonterminals {
+		set := createSet()
+		for _, state := range states {
+			set.add(string(state))
+		}
+		result += fmt.Sprintf(" %s : %s \n", term, set.string())
+	}
+	result += "\n"
+
+	// Precedence
+	result += " Precedence\n"
+	result += "\n"
+	for term, level := range p.grammar.precedence {
+		result += fmt.Sprintf(" %s : %d \n", term, level)
+	}
+	result += "\n"
+
+	// Productions
+	result += "## Productions\n"
+	result += "\n"
+	for _, prod := range p.grammar.productions {
+		result += fmt.Sprintf("### <a id=P%d></a>P%d %s -> %s \n", prod.id, prod.id, prod.name, strings.Join(prod.prod, " "))
+	}
+
+	return result
+}
+
+func (p *Parser) lexMD() string {
+	result := "# Lexer\n"
+	result += "\n"
+
+	for key, val := range p.lexer.rules {
+		result += fmt.Sprintf("%s : %s \n", key, val)
+	}
+	result += "\n"
+
+	return result
 }
 
 
