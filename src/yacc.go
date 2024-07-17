@@ -4,6 +4,8 @@ import (
 	"crypto/md5"
 	"encoding/binary"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -15,6 +17,7 @@ const ENDTOKEN = "$end"
 type Parser struct {
 	lexer *Lexer
 	grammar *grammar
+	table *lrTable
 }
 
 // This struct implements the LR table generation algorithm.
@@ -104,6 +107,42 @@ type LRItem struct {
 	len int
 	symSet *StrSet
 }
+
+func CreateParser(lrules map[string]string, ignore []string, srules []*SyntaxRule, precedence []*Precedence) *Parser {
+	lexer := CreateLexer(lrules, ignore)
+	grammar := CreateGrammar(lexer, srules, precedence)
+	table := createLRTable(grammar)
+	return &Parser{
+		lexer: lexer,
+		grammar: grammar,
+		table: table,
+	}
+}
+
+func (p *Parser) Tokenize(s string) ([]*Token, error) {
+	return p.lexer.Tokenize(s)
+}
+
+// write the info about lalr parse to markdown format, and store it
+func (p *Parser) WriteMDInfo(name string, path string) {
+	result := ""
+	result = p.lexMD()
+
+	// write string to file
+	filePath := filepath.Join(path, name + ".md")
+	file, fileErr := os.Create(filePath)
+	if fileErr != nil {
+		panic(fileErr)
+	}
+	defer file.Close()
+	_, writeErr := file.WriteString(result)
+	if writeErr != nil {
+		panic(writeErr)
+	}
+
+	fmt.Printf("file %s is written successfully in %s\n", name, path)
+}
+
 
 func createLRTable(g *grammar) *lrTable {
 	table := &lrTable {
