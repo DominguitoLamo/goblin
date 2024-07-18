@@ -141,8 +141,15 @@ func (p *Parser) ParseToken(tokens []*Token) (PValue, error) {
 
 	current := -1
 	state := 0
-	stateStack := make([]int, 0)
-	valStack := make([]PValue, 0)
+	stateStack := []int {0}
+	endToken := &Token {
+		Type: ENDTOKEN,
+		Lineno: 0,
+	}
+	valStack := []PValue {
+		endToken,
+	}
+	tokens = append(tokens, endToken)
 
 	// util func
 	nextToken := func() *Token {
