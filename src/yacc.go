@@ -20,6 +20,13 @@ type Parser struct {
 	table *lrTable
 }
 
+// Interface of handling value in stack during parsing. The conversion of the value need to be handled by developer.
+type PValue interface {
+	TypeName() string
+	GetValue() []byte
+	GetLine() int
+}
+
 // This struct implements the LR table generation algorithm.
 type lrTable struct {
 	grammar *grammar
@@ -52,7 +59,7 @@ type production struct{
 	prodSize int
 	symSet *StrSet
 	precLevel int
-	pFunc func(Parser) error
+	pFunc func([]PValue) (PValue, error)
 	lrItems []*LRItem
 	lrNext *LRItem
 	lr0Added int
@@ -60,7 +67,7 @@ type production struct{
 
 type RuleOps struct {
 	Ops string
-	RFunc    func(Parser) error
+	RFunc    func([]PValue) (PValue, error)
 }
 
 type SyntaxRule struct {
@@ -116,6 +123,87 @@ func CreateParser(lrules map[string]string, ignore []string, srules []*SyntaxRul
 		lexer: lexer,
 		grammar: grammar,
 		table: table,
+	}
+}
+
+func (p *Parser) Parse(s string) (PValue,error) {
+	t, tokenErr := p.Tokenize(s)
+	if tokenErr != nil {
+		return nil, tokenErr
+	}
+	return p.ParseToken(t)
+}
+
+func (p *Parser) ParseToken(tokens []*Token) (PValue, error) {
+	actions := p.table.lrAction
+	lGoto := p.table.lrGoto
+	productions := p.grammar.productions
+
+	current := -1
+	state := 0
+	stateStack := make([]int, 0)
+	valStack := make([]PValue, 0)
+
+	// util func
+	nextToken := func() *Token {
+		current++
+		if current < len(tokens) {
+			return tokens[current]
+		} else {
+			panic("pointer error: current token pointer out of range")
+		}
+	}
+
+	for {
+		currentToken := nextToken()
+		// check actionTable
+		action, ok := actions[state][currentToken.Type]
+
+		if ok {
+			// shift
+			if action[0] == 's' {
+				nextState := turnAction2id(action)
+				stateStack = append(stateStack, nextState)
+				valStack = append(valStack, currentToken)
+				state = nextState
+				continue
+			} else if action[0] == 'r' {
+				// reduce
+				ruleId := turnAction2id(action)
+				prod := productions[ruleId]
+				popTimes := prod.prodSize
+				vals, newValStack := sliceStack(valStack, popTimes)
+				valStack = newValStack
+				if prod.pFunc != nil {
+					panic(fmt.Sprintf("Rule %s has no semantics function", prod.name))
+				}
+				returned, semanticsErr := prod.pFunc(vals)
+				if semanticsErr != nil {
+					msg := fmt.Sprintf("Semantics Error: %s, line %d", semanticsErr.Error(), currentToken.Lineno)
+					return nil, fmt.Errorf(msg)
+				}
+				valStack = append(valStack, returned)
+				
+				// pop state and goto next state
+				_, newStates := sliceStack(stateStack, popTimes)
+				stateStack = newStates
+				state = stateStack[len(stateStack)-1]
+				gotoState, ok := lGoto[state][prod.name]
+				if ok {
+					state = gotoState
+					continue
+				} else {
+					return nil, fmt.Errorf("syntax error at line %d, token %s", currentToken.Lineno, currentToken.Type)
+				}
+			} else {
+				// accepted!
+				result := valStack[len(valStack) - 1]
+				return result, nil
+			}
+		} else {
+			// syntax error
+			return nil, fmt.Errorf("syntax error at line %d, token %s", currentToken.Lineno, currentToken.Type)
+		}
 	}
 }
 
@@ -906,20 +994,6 @@ func (self *LRItem) String() string {
 	return s
 }
 
-func CreateSyntaxParser(l *Lexer, rules []*SyntaxRule, prec []*Precedence) *Parser {
-	parser := &Parser{
-		lexer: l,
-		grammar: CreateGrammar(l, rules, prec),
-	}
-	parser.buildLRTables()
-	return parser
-}
-
-// Build the LR Parsing tables from the grammar
-func (self *Parser) buildLRTables() {
-
-}
-
 func CreateGrammar(l *Lexer, r []*SyntaxRule, p []*Precedence) *grammar {
 	grammar := &grammar{
 		productions:  make([]*production, 0),
@@ -1180,7 +1254,7 @@ func (g *grammar) setRules(rules []*SyntaxRule) {
 	}
 }
 
-func (g *grammar) addProduction(name string, rOps []string, rFunc func(Parser) error) {
+func (g *grammar) addProduction(name string, rOps []string, rFunc func([]PValue) (PValue, error)) {
 	precInfo, opsArr := g.getPrecedence(name, rOps)
 	var ops []string
 	if opsArr != nil {
@@ -1456,7 +1530,7 @@ func expStr2Arr(s string) []string {
   return reg.FindAllString(s, -1)
 }
 
-func createProduction(pnumber int, name string, ops []string, precInfo int, pfunc func(Parser) error) *production {
+func createProduction(pnumber int, name string, ops []string, precInfo int, pfunc func([]PValue) (PValue, error)) *production {
 	p := &production{
 		id: pnumber,
 		name: name,
@@ -1503,4 +1577,16 @@ func debugPrintClosures(table *lrTable) {
 			}
 		}
 	}
+}
+
+// slice the stack and return the slice and the rest of the stack
+func sliceStack[T any](arr []T, times int) ([]T, []T) {
+	if len(arr) == 0 {
+		panic("popStack: stack is empty")
+	}
+
+	start := len(arr) - times
+	vals := arr[start:]
+	newArr := arr[:start]
+	return vals, newArr
 }

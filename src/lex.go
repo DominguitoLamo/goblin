@@ -13,6 +13,18 @@ type Token struct {
 	End    int
 }
 
+func (t *Token) TypeName() string {
+	return t.Type
+}
+
+func (t *Token) GetValue() []byte {
+	return []byte(t.Value)
+}
+
+func (t *Token) GetLine() int {
+	return t.Lineno
+}
+
 func (t *Token) String() string {
 	s := fmt.Sprintf("Token(%s, %s, index: %d, end: %d, lineNO: %d)\n", t.Type, t.Value, t.Index, t.End, t.Lineno)
 	return s
