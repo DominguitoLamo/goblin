@@ -438,7 +438,6 @@ func createLRTable(g *grammar) *lrTable {
 	closures := table.lr0Items()
 	table.closures = closures
 	table.addLalrLookheads()
-	debugPrintClosures(table)
 
 	// Let's build LR Table!
 	// build the parser table, state by state
