@@ -252,4 +252,7 @@ func tokenValue2Int(val []byte) (int, error) {
 func TestCalc(t *testing.T) {
 	calc := createCalc()
 	calc.parse("1 + 2 * 3")
+	calc.parse("a = 1 + 2")
+	calc.parse("b = a + 2")
+	calc.parse("a + b")
 }
