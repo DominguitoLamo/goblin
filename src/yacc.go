@@ -161,8 +161,9 @@ func (p *Parser) ParseToken(tokens []*Token) (PValue, error) {
 		}
 	}
 
+	currentToken := nextToken()
+
 	for {
-		currentToken := nextToken()
 		// check actionTable
 		action, ok := actions[state][currentToken.Type]
 
@@ -170,9 +171,12 @@ func (p *Parser) ParseToken(tokens []*Token) (PValue, error) {
 			// shift
 			if action[0] == 's' {
 				nextState := turnAction2id(action)
-				stateStack = append(stateStack, nextState)
-				valStack = append(valStack, currentToken)
 				state = nextState
+				if currentToken.Type != ENDTOKEN {
+					stateStack = append(stateStack, nextState)
+					valStack = append(valStack, currentToken)
+					currentToken = nextToken()
+				}
 				continue
 			} else if action[0] == 'r' {
 				// reduce
@@ -181,7 +185,7 @@ func (p *Parser) ParseToken(tokens []*Token) (PValue, error) {
 				popTimes := prod.prodSize
 				vals, newValStack := sliceStack(valStack, popTimes)
 				valStack = newValStack
-				if prod.pFunc != nil {
+				if prod.pFunc == nil {
 					panic(fmt.Sprintf("Rule %s has no semantics function", prod.name))
 				}
 				returned, semanticsErr := prod.pFunc(vals)
@@ -198,9 +202,10 @@ func (p *Parser) ParseToken(tokens []*Token) (PValue, error) {
 				gotoState, ok := lGoto[state][prod.name]
 				if ok {
 					state = gotoState
+					stateStack = append(stateStack, gotoState)
 					continue
 				} else {
-					return nil, fmt.Errorf("syntax error at line %d, token %s", currentToken.Lineno, currentToken.Type)
+					return nil, fmt.Errorf("syntax error at line %d, token %s %s", currentToken.Lineno, currentToken.Type, currentToken.Value)
 				}
 			} else {
 				// accepted!
@@ -209,7 +214,7 @@ func (p *Parser) ParseToken(tokens []*Token) (PValue, error) {
 			}
 		} else {
 			// syntax error
-			return nil, fmt.Errorf("syntax error at line %d, token %s", currentToken.Lineno, currentToken.Type)
+			return nil, fmt.Errorf("syntax error at line %d, token %s %s", currentToken.Lineno, currentToken.Type, currentToken.Value)
 		}
 	}
 }
